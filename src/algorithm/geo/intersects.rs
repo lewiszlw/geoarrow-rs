@@ -327,11 +327,11 @@ iter_geo_impl_geo_scalar!(MultiPolygonArray<O>, geo::MultiPolygon);
 
 #[cfg(test)]
 mod tests {
+    use crate::algorithm::geo::Intersects;
+    use crate::array::{CoordBuffer, InterleavedCoordBuffer, PointArray, PolygonArray, WKBArray};
+    use crate::scalar::Point;
     use arrow_array::Float64Array;
     use geo::{point, polygon};
-    use crate::algorithm::geo::Intersects;
-    use crate::array::{CoordBuffer, InterleavedCoordBuffer, MultiPolygonArray, PointArray, PolygonArray, WKBArray};
-    use crate::scalar::Point;
 
     #[test]
     fn wkbarray_intersects_arrays() {
@@ -348,7 +348,8 @@ mod tests {
                 (x: 4., y: 4.),
                 (x: 4., y: 2.),
             ],
-        ].into();
+        ]
+        .into();
         let wkb_array: WKBArray<i32> = (&polygon_array).into();
 
         let point_array: PointArray = vec![point!(x: 1.0, y: 1.0), point!(x: 1.1, y: 1.1)].into();
@@ -374,11 +375,11 @@ mod tests {
                 (x: 4., y: 4.),
                 (x: 4., y: 2.),
             ],
-        ].into();
+        ]
+        .into();
         let wkb_array: WKBArray<i32> = (&polygon_array).into();
 
-        let (_, buf, _) =
-            Float64Array::from(vec![1.0, 1.0]).into_parts();
+        let (_, buf, _) = Float64Array::from(vec![1.0, 1.0]).into_parts();
         let buf = CoordBuffer::Interleaved(InterleavedCoordBuffer::new(buf));
         let point = Point::new_owned(buf, 0);
 
