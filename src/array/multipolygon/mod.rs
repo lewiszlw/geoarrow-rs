@@ -1,10 +1,10 @@
-//! Contains the [`MultiPolygonArray`] and [`MutableMultiPolygonArray`] for arrays of MultiPolygon
+//! Contains the [`MultiPolygonArray`] and [`MultiPolygonBuilder`] for arrays of MultiPolygon
 //! geometries.
 
 pub use array::MultiPolygonArray;
+pub use builder::{MultiPolygonBuilder, MultiPolygonCapacity};
 pub use iterator::MultiPolygonArrayIter;
-pub use mutable::MutableMultiPolygonArray;
 
 mod array;
+mod builder;
 pub mod iterator;
-mod mutable;

@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::algorithm::native::eq::offset_buffer_eq;
+use crate::array::polygon::PolygonCapacity;
 use crate::array::util::{offsets_buffer_i32_to_i64, offsets_buffer_i64_to_i32, OffsetBufferUtils};
 use crate::array::zip_validity::ZipValidity;
 use crate::array::{CoordBuffer, CoordType, MultiLineStringArray, RectArray, WKBArray};
@@ -9,7 +10,7 @@ use crate::datatypes::GeoDataType;
 use crate::error::GeoArrowError;
 use crate::geo_traits::PolygonTrait;
 use crate::scalar::Polygon;
-use crate::trait_::{GeoArrayAccessor, IntoArrow};
+use crate::trait_::{GeometryArrayAccessor, GeometryArraySelfMethods, IntoArrow};
 use crate::util::{owned_slice_offsets, owned_slice_validity};
 use crate::GeometryArrayTrait;
 use arrow_array::{Array, OffsetSizeTrait};
@@ -18,7 +19,7 @@ use arrow_buffer::bit_iterator::BitIterator;
 use arrow_buffer::{NullBuffer, OffsetBuffer};
 use arrow_schema::{DataType, Field};
 
-use super::MutablePolygonArray;
+use super::PolygonBuilder;
 
 /// An immutable array of Polygon geometries using GeoArrow's in-memory representation.
 ///
@@ -148,7 +149,7 @@ impl<O: OffsetSizeTrait> PolygonArray<O> {
     }
 }
 
-impl<'a, O: OffsetSizeTrait> GeometryArrayTrait<'a> for PolygonArray<O> {
+impl<O: OffsetSizeTrait> GeometryArrayTrait for PolygonArray<O> {
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }
@@ -178,22 +179,8 @@ impl<'a, O: OffsetSizeTrait> GeometryArrayTrait<'a> for PolygonArray<O> {
         Arc::new(self.into_arrow())
     }
 
-    fn with_coords(self, coords: CoordBuffer) -> Self {
-        assert_eq!(coords.len(), self.coords.len());
-        Self::new(coords, self.geom_offsets, self.ring_offsets, self.validity)
-    }
-
     fn coord_type(&self) -> CoordType {
         self.coords.coord_type()
-    }
-
-    fn into_coord_type(self, coord_type: CoordType) -> Self {
-        Self::new(
-            self.coords.into_coord_type(coord_type),
-            self.geom_offsets,
-            self.ring_offsets,
-            self.validity,
-        )
     }
 
     /// Returns the number of geometries in this array
@@ -207,6 +194,22 @@ impl<'a, O: OffsetSizeTrait> GeometryArrayTrait<'a> for PolygonArray<O> {
     #[inline]
     fn validity(&self) -> Option<&NullBuffer> {
         self.validity.as_ref()
+    }
+}
+
+impl<O: OffsetSizeTrait> GeometryArraySelfMethods for PolygonArray<O> {
+    fn with_coords(self, coords: CoordBuffer) -> Self {
+        assert_eq!(coords.len(), self.coords.len());
+        Self::new(coords, self.geom_offsets, self.ring_offsets, self.validity)
+    }
+
+    fn into_coord_type(self, coord_type: CoordType) -> Self {
+        Self::new(
+            self.coords.into_coord_type(coord_type),
+            self.geom_offsets,
+            self.ring_offsets,
+            self.validity,
+        )
     }
 
     /// Slices this [`PolygonArray`] in place.
@@ -262,7 +265,7 @@ impl<'a, O: OffsetSizeTrait> GeometryArrayTrait<'a> for PolygonArray<O> {
 }
 
 // Implement geometry accessors
-impl<'a, O: OffsetSizeTrait> GeoArrayAccessor<'a> for PolygonArray<O> {
+impl<'a, O: OffsetSizeTrait> GeometryArrayAccessor<'a> for PolygonArray<O> {
     type Item = Polygon<'a, O>;
     type ItemGeo = geo::Polygon;
 
@@ -403,14 +406,14 @@ impl TryFrom<&dyn Array> for PolygonArray<i64> {
 }
 impl<O: OffsetSizeTrait, G: PolygonTrait<T = f64>> From<Vec<Option<G>>> for PolygonArray<O> {
     fn from(other: Vec<Option<G>>) -> Self {
-        let mut_arr: MutablePolygonArray<O> = other.into();
+        let mut_arr: PolygonBuilder<O> = other.into();
         mut_arr.into()
     }
 }
 
-impl<O: OffsetSizeTrait, G: PolygonTrait<T = f64>> From<Vec<G>> for PolygonArray<O> {
-    fn from(other: Vec<G>) -> Self {
-        let mut_arr: MutablePolygonArray<O> = other.into();
+impl<O: OffsetSizeTrait, G: PolygonTrait<T = f64>> From<&[G]> for PolygonArray<O> {
+    fn from(other: &[G]) -> Self {
+        let mut_arr: PolygonBuilder<O> = other.into();
         mut_arr.into()
     }
 }
@@ -419,7 +422,7 @@ impl<O: OffsetSizeTrait, G: PolygonTrait<T = f64>> From<bumpalo::collections::Ve
     for PolygonArray<O>
 {
     fn from(value: bumpalo::collections::Vec<G>) -> Self {
-        let mut_arr: MutablePolygonArray<O> = value.into();
+        let mut_arr: PolygonBuilder<O> = value.into();
         mut_arr.into()
     }
 }
@@ -428,7 +431,7 @@ impl<O: OffsetSizeTrait, G: PolygonTrait<T = f64>> From<bumpalo::collections::Ve
     for PolygonArray<O>
 {
     fn from(value: bumpalo::collections::Vec<Option<G>>) -> Self {
-        let mut_arr: MutablePolygonArray<O> = value.into();
+        let mut_arr: PolygonBuilder<O> = value.into();
         mut_arr.into()
     }
 }
@@ -437,7 +440,7 @@ impl<O: OffsetSizeTrait> TryFrom<WKBArray<O>> for PolygonArray<O> {
     type Error = GeoArrowError;
 
     fn try_from(value: WKBArray<O>) -> Result<Self, Self::Error> {
-        let mut_arr: MutablePolygonArray<O> = value.try_into()?;
+        let mut_arr: PolygonBuilder<O> = value.try_into()?;
         Ok(mut_arr.into())
     }
 }
@@ -491,8 +494,8 @@ impl<O: OffsetSizeTrait> From<RectArray> for PolygonArray<O> {
         // Don't reserve capacity for null entries
         let coord_capacity = (value.len() - value.null_count()) * 5;
 
-        let mut output_array =
-            MutablePolygonArray::with_capacities(coord_capacity, ring_capacity, geom_capacity);
+        let capacity = PolygonCapacity::new(coord_capacity, ring_capacity, geom_capacity);
+        let mut output_array = PolygonBuilder::with_capacity(capacity);
 
         value.iter_geo().for_each(|maybe_g| {
             output_array
@@ -507,7 +510,7 @@ impl<O: OffsetSizeTrait> From<RectArray> for PolygonArray<O> {
 /// Default to an empty array
 impl<O: OffsetSizeTrait> Default for PolygonArray<O> {
     fn default() -> Self {
-        MutablePolygonArray::default().into()
+        PolygonBuilder::default().into()
     }
 }
 
@@ -544,7 +547,7 @@ mod test {
 
     #[test]
     fn geo_roundtrip_accurate() {
-        let arr: PolygonArray<i64> = vec![p0(), p1()].into();
+        let arr: PolygonArray<i64> = vec![p0(), p1()].as_slice().into();
         assert_eq!(arr.value_as_geo(0), p0());
         assert_eq!(arr.value_as_geo(1), p1());
     }
@@ -559,7 +562,7 @@ mod test {
 
     #[test]
     fn slice() {
-        let arr: PolygonArray<i64> = vec![p0(), p1()].into();
+        let arr: PolygonArray<i64> = vec![p0(), p1()].as_slice().into();
         let sliced = arr.slice(1, 1);
 
         assert_eq!(sliced.len(), 1);
@@ -571,7 +574,7 @@ mod test {
 
     #[test]
     fn owned_slice() {
-        let arr: PolygonArray<i64> = vec![p0(), p1()].into();
+        let arr: PolygonArray<i64> = vec![p0(), p1()].as_slice().into();
         let sliced = arr.owned_slice(1, 1);
 
         // assert!(

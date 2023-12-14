@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::algorithm::native::eq::offset_buffer_eq;
-use crate::array::mutable_offset::OffsetsBuilder;
+use crate::array::offset_builder::OffsetsBuilder;
 use crate::array::util::{offsets_buffer_i32_to_i64, offsets_buffer_i64_to_i32, OffsetBufferUtils};
 use crate::array::zip_validity::ZipValidity;
 use crate::array::{CoordBuffer, CoordType, LineStringArray, PolygonArray, WKBArray};
@@ -10,7 +10,7 @@ use crate::datatypes::GeoDataType;
 use crate::error::GeoArrowError;
 use crate::geo_traits::MultiLineStringTrait;
 use crate::scalar::MultiLineString;
-use crate::trait_::{GeoArrayAccessor, IntoArrow};
+use crate::trait_::{GeometryArrayAccessor, GeometryArraySelfMethods, IntoArrow};
 use crate::util::{owned_slice_offsets, owned_slice_validity};
 use crate::GeometryArrayTrait;
 use arrow_array::{Array, GenericListArray, LargeListArray, ListArray, OffsetSizeTrait};
@@ -18,7 +18,7 @@ use arrow_buffer::bit_iterator::BitIterator;
 use arrow_buffer::{NullBuffer, OffsetBuffer};
 use arrow_schema::{DataType, Field};
 
-use super::MutableMultiLineStringArray;
+use super::MultiLineStringBuilder;
 
 /// An immutable array of MultiLineString geometries using GeoArrow's in-memory representation.
 ///
@@ -148,7 +148,7 @@ impl<O: OffsetSizeTrait> MultiLineStringArray<O> {
     }
 }
 
-impl<'a, O: OffsetSizeTrait> GeometryArrayTrait<'a> for MultiLineStringArray<O> {
+impl<O: OffsetSizeTrait> GeometryArrayTrait for MultiLineStringArray<O> {
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }
@@ -178,22 +178,8 @@ impl<'a, O: OffsetSizeTrait> GeometryArrayTrait<'a> for MultiLineStringArray<O> 
         Arc::new(self.into_arrow())
     }
 
-    fn with_coords(self, coords: CoordBuffer) -> Self {
-        assert_eq!(coords.len(), self.coords.len());
-        Self::new(coords, self.geom_offsets, self.ring_offsets, self.validity)
-    }
-
     fn coord_type(&self) -> CoordType {
         self.coords.coord_type()
-    }
-
-    fn into_coord_type(self, coord_type: CoordType) -> Self {
-        Self::new(
-            self.coords.into_coord_type(coord_type),
-            self.geom_offsets,
-            self.ring_offsets,
-            self.validity,
-        )
     }
 
     /// Returns the number of geometries in this array
@@ -207,6 +193,22 @@ impl<'a, O: OffsetSizeTrait> GeometryArrayTrait<'a> for MultiLineStringArray<O> 
     #[inline]
     fn validity(&self) -> Option<&NullBuffer> {
         self.validity.as_ref()
+    }
+}
+
+impl<O: OffsetSizeTrait> GeometryArraySelfMethods for MultiLineStringArray<O> {
+    fn with_coords(self, coords: CoordBuffer) -> Self {
+        assert_eq!(coords.len(), self.coords.len());
+        Self::new(coords, self.geom_offsets, self.ring_offsets, self.validity)
+    }
+
+    fn into_coord_type(self, coord_type: CoordType) -> Self {
+        Self::new(
+            self.coords.into_coord_type(coord_type),
+            self.geom_offsets,
+            self.ring_offsets,
+            self.validity,
+        )
     }
 
     /// Slices this [`MultiLineStringArray`] in place.
@@ -262,7 +264,7 @@ impl<'a, O: OffsetSizeTrait> GeometryArrayTrait<'a> for MultiLineStringArray<O> 
 }
 
 // Implement geometry accessors
-impl<'a, O: OffsetSizeTrait> GeoArrayAccessor<'a> for MultiLineStringArray<O> {
+impl<'a, O: OffsetSizeTrait> GeometryArrayAccessor<'a> for MultiLineStringArray<O> {
     type Item = MultiLineString<'a, O>;
     type ItemGeo = geo::MultiLineString;
 
@@ -409,16 +411,14 @@ impl<O: OffsetSizeTrait, G: MultiLineStringTrait<T = f64>> From<Vec<Option<G>>>
     for MultiLineStringArray<O>
 {
     fn from(other: Vec<Option<G>>) -> Self {
-        let mut_arr: MutableMultiLineStringArray<O> = other.into();
+        let mut_arr: MultiLineStringBuilder<O> = other.into();
         mut_arr.into()
     }
 }
 
-impl<O: OffsetSizeTrait, G: MultiLineStringTrait<T = f64>> From<Vec<G>>
-    for MultiLineStringArray<O>
-{
-    fn from(other: Vec<G>) -> Self {
-        let mut_arr: MutableMultiLineStringArray<O> = other.into();
+impl<O: OffsetSizeTrait, G: MultiLineStringTrait<T = f64>> From<&[G]> for MultiLineStringArray<O> {
+    fn from(other: &[G]) -> Self {
+        let mut_arr: MultiLineStringBuilder<O> = other.into();
         mut_arr.into()
     }
 }
@@ -427,7 +427,7 @@ impl<O: OffsetSizeTrait, G: MultiLineStringTrait<T = f64>>
     From<bumpalo::collections::Vec<'_, Option<G>>> for MultiLineStringArray<O>
 {
     fn from(other: bumpalo::collections::Vec<'_, Option<G>>) -> Self {
-        let mut_arr: MutableMultiLineStringArray<O> = other.into();
+        let mut_arr: MultiLineStringBuilder<O> = other.into();
         mut_arr.into()
     }
 }
@@ -436,7 +436,7 @@ impl<O: OffsetSizeTrait, G: MultiLineStringTrait<T = f64>> From<bumpalo::collect
     for MultiLineStringArray<O>
 {
     fn from(other: bumpalo::collections::Vec<'_, G>) -> Self {
-        let mut_arr: MutableMultiLineStringArray<O> = other.into();
+        let mut_arr: MultiLineStringBuilder<O> = other.into();
         mut_arr.into()
     }
 }
@@ -457,7 +457,7 @@ impl<O: OffsetSizeTrait> TryFrom<WKBArray<O>> for MultiLineStringArray<O> {
     type Error = GeoArrowError;
 
     fn try_from(value: WKBArray<O>) -> Result<Self, Self::Error> {
-        let mut_arr: MutableMultiLineStringArray<O> = value.try_into()?;
+        let mut_arr: MultiLineStringBuilder<O> = value.try_into()?;
         Ok(mut_arr.into())
     }
 }
@@ -514,7 +514,7 @@ impl TryFrom<MultiLineStringArray<i64>> for MultiLineStringArray<i32> {
 /// Default to an empty array
 impl<O: OffsetSizeTrait> Default for MultiLineStringArray<O> {
     fn default() -> Self {
-        MutableMultiLineStringArray::default().into()
+        MultiLineStringBuilder::default().into()
     }
 }
 
@@ -552,7 +552,7 @@ mod test {
 
     #[test]
     fn geo_roundtrip_accurate() {
-        let arr: MultiLineStringArray<i64> = vec![ml0(), ml1()].into();
+        let arr: MultiLineStringArray<i64> = vec![ml0(), ml1()].as_slice().into();
         assert_eq!(arr.value_as_geo(0), ml0());
         assert_eq!(arr.value_as_geo(1), ml1());
     }
@@ -567,7 +567,7 @@ mod test {
 
     #[test]
     fn slice() {
-        let arr: MultiLineStringArray<i64> = vec![ml0(), ml1()].into();
+        let arr: MultiLineStringArray<i64> = vec![ml0(), ml1()].as_slice().into();
         let sliced = arr.slice(1, 1);
         assert_eq!(sliced.len(), 1);
         assert_eq!(sliced.get_as_geo(0), Some(ml1()));
@@ -575,7 +575,7 @@ mod test {
 
     #[test]
     fn owned_slice() {
-        let arr: MultiLineStringArray<i64> = vec![ml0(), ml1()].into();
+        let arr: MultiLineStringArray<i64> = vec![ml0(), ml1()].as_slice().into();
         let sliced = arr.owned_slice(1, 1);
 
         // assert!(

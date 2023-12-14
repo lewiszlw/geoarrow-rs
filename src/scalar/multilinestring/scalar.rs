@@ -5,9 +5,8 @@ use crate::array::{CoordBuffer, MultiLineStringArray};
 use crate::geo_traits::MultiLineStringTrait;
 use crate::scalar::multilinestring::MultiLineStringIterator;
 use crate::scalar::LineString;
-use crate::trait_::GeoArrayAccessor;
 use crate::trait_::GeometryScalarTrait;
-use crate::GeometryArrayTrait;
+use crate::trait_::{GeometryArrayAccessor, GeometryArraySelfMethods};
 use arrow_array::OffsetSizeTrait;
 use arrow_buffer::OffsetBuffer;
 use rstar::{RTreeObject, AABB};
@@ -100,7 +99,7 @@ impl<'a, O: OffsetSizeTrait> MultiLineString<'a, O> {
     }
 }
 
-impl<'a, O: OffsetSizeTrait> GeometryScalarTrait<'a> for MultiLineString<'a, O> {
+impl<'a, O: OffsetSizeTrait> GeometryScalarTrait for MultiLineString<'a, O> {
     type ScalarGeo = geo::MultiLineString;
 
     fn to_geo(&self) -> Self::ScalarGeo {
@@ -217,13 +216,13 @@ impl<O: OffsetSizeTrait> PartialEq for MultiLineString<'_, O> {
 mod test {
     use crate::array::MultiLineStringArray;
     use crate::test::multilinestring::{ml0, ml1};
-    use crate::trait_::GeoArrayAccessor;
+    use crate::trait_::GeometryArrayAccessor;
 
     /// Test Eq where the current index is true but another index is false
     #[test]
     fn test_eq_other_index_false() {
-        let arr1: MultiLineStringArray<i32> = vec![ml0(), ml1()].into();
-        let arr2: MultiLineStringArray<i32> = vec![ml0(), ml0()].into();
+        let arr1: MultiLineStringArray<i32> = vec![ml0(), ml1()].as_slice().into();
+        let arr2: MultiLineStringArray<i32> = vec![ml0(), ml0()].as_slice().into();
 
         assert_eq!(arr1.value(0), arr2.value(0));
         assert_ne!(arr1.value(1), arr2.value(1));

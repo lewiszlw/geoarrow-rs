@@ -1,12 +1,12 @@
 use std::sync::Arc;
 
 use crate::array::{
-    CoordType, InterleavedCoordBuffer, MutableInterleavedCoordBuffer, MutableSeparatedCoordBuffer,
-    SeparatedCoordBuffer,
+    CoordType, InterleavedCoordBuffer, InterleavedCoordBufferBuilder, SeparatedCoordBuffer,
+    SeparatedCoordBufferBuilder,
 };
 use crate::error::GeoArrowError;
 use crate::scalar::Coord;
-use crate::trait_::{GeoArrayAccessor, IntoArrow};
+use crate::trait_::{GeometryArrayAccessor, GeometryArraySelfMethods, IntoArrow};
 use crate::GeometryArrayTrait;
 use arrow_array::{Array, FixedSizeListArray, StructArray};
 use arrow_buffer::NullBuffer;
@@ -43,7 +43,7 @@ impl CoordBuffer {
     }
 }
 
-impl<'a> GeometryArrayTrait<'a> for CoordBuffer {
+impl GeometryArrayTrait for CoordBuffer {
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }
@@ -71,37 +71,10 @@ impl<'a> GeometryArrayTrait<'a> for CoordBuffer {
         self.into_arrow()
     }
 
-    fn with_coords(self, coords: CoordBuffer) -> Self {
-        assert_eq!(coords.len(), self.len());
-        coords
-    }
-
     fn coord_type(&self) -> CoordType {
         match self {
             CoordBuffer::Interleaved(cb) => cb.coord_type(),
             CoordBuffer::Separated(cb) => cb.coord_type(),
-        }
-    }
-
-    fn into_coord_type(self, coord_type: CoordType) -> Self {
-        match (self, coord_type) {
-            (CoordBuffer::Interleaved(cb), CoordType::Interleaved) => CoordBuffer::Interleaved(cb),
-            (CoordBuffer::Interleaved(cb), CoordType::Separated) => {
-                let mut new_buffer = MutableSeparatedCoordBuffer::with_capacity(cb.len());
-                cb.coords
-                    .into_iter()
-                    .tuples()
-                    .for_each(|(x, y)| new_buffer.push_xy(*x, *y));
-                CoordBuffer::Separated(new_buffer.into())
-            }
-            (CoordBuffer::Separated(cb), CoordType::Separated) => CoordBuffer::Separated(cb),
-            (CoordBuffer::Separated(cb), CoordType::Interleaved) => {
-                let mut new_buffer = MutableInterleavedCoordBuffer::with_capacity(cb.len());
-                cb.x.into_iter()
-                    .zip(cb.y.iter())
-                    .for_each(|(x, y)| new_buffer.push_xy(*x, *y));
-                CoordBuffer::Interleaved(new_buffer.into())
-            }
         }
     }
 
@@ -114,6 +87,35 @@ impl<'a> GeometryArrayTrait<'a> for CoordBuffer {
 
     fn validity(&self) -> Option<&NullBuffer> {
         panic!("coordinate arrays don't have their own validity arrays")
+    }
+}
+
+impl GeometryArraySelfMethods for CoordBuffer {
+    fn with_coords(self, coords: CoordBuffer) -> Self {
+        assert_eq!(coords.len(), self.len());
+        coords
+    }
+
+    fn into_coord_type(self, coord_type: CoordType) -> Self {
+        match (self, coord_type) {
+            (CoordBuffer::Interleaved(cb), CoordType::Interleaved) => CoordBuffer::Interleaved(cb),
+            (CoordBuffer::Interleaved(cb), CoordType::Separated) => {
+                let mut new_buffer = SeparatedCoordBufferBuilder::with_capacity(cb.len());
+                cb.coords
+                    .into_iter()
+                    .tuples()
+                    .for_each(|(x, y)| new_buffer.push_xy(*x, *y));
+                CoordBuffer::Separated(new_buffer.into())
+            }
+            (CoordBuffer::Separated(cb), CoordType::Separated) => CoordBuffer::Separated(cb),
+            (CoordBuffer::Separated(cb), CoordType::Interleaved) => {
+                let mut new_buffer = InterleavedCoordBufferBuilder::with_capacity(cb.len());
+                cb.x.into_iter()
+                    .zip(cb.y.iter())
+                    .for_each(|(x, y)| new_buffer.push_xy(*x, *y));
+                CoordBuffer::Interleaved(new_buffer.into())
+            }
+        }
     }
 
     fn slice(&self, offset: usize, length: usize) -> Self {
@@ -133,7 +135,7 @@ impl<'a> GeometryArrayTrait<'a> for CoordBuffer {
     }
 }
 
-impl<'a> GeoArrayAccessor<'a> for CoordBuffer {
+impl<'a> GeometryArrayAccessor<'a> for CoordBuffer {
     type Item = Coord<'a>;
     type ItemGeo = geo::Coord;
 

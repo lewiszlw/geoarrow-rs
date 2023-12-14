@@ -5,8 +5,7 @@ use crate::array::{CoordBuffer, MultiPolygonArray};
 use crate::geo_traits::MultiPolygonTrait;
 use crate::scalar::multipolygon::MultiPolygonIterator;
 use crate::scalar::Polygon;
-use crate::trait_::GeometryScalarTrait;
-use crate::GeometryArrayTrait;
+use crate::trait_::{GeometryArraySelfMethods, GeometryScalarTrait};
 use arrow_array::OffsetSizeTrait;
 use arrow_buffer::OffsetBuffer;
 use rstar::{RTreeObject, AABB};
@@ -119,7 +118,7 @@ impl<'a, O: OffsetSizeTrait> MultiPolygon<'a, O> {
     }
 }
 
-impl<'a, O: OffsetSizeTrait> GeometryScalarTrait<'a> for MultiPolygon<'a, O> {
+impl<'a, O: OffsetSizeTrait> GeometryScalarTrait for MultiPolygon<'a, O> {
     type ScalarGeo = geo::MultiPolygon;
 
     fn to_geo(&self) -> Self::ScalarGeo {
@@ -240,13 +239,13 @@ impl<O: OffsetSizeTrait> PartialEq for MultiPolygon<'_, O> {
 mod test {
     use crate::array::MultiPolygonArray;
     use crate::test::multipolygon::{mp0, mp1};
-    use crate::trait_::GeoArrayAccessor;
+    use crate::trait_::GeometryArrayAccessor;
 
     /// Test Eq where the current index is true but another index is false
     #[test]
     fn test_eq_other_index_false() {
-        let arr1: MultiPolygonArray<i32> = vec![mp0(), mp1()].into();
-        let arr2: MultiPolygonArray<i32> = vec![mp0(), mp0()].into();
+        let arr1: MultiPolygonArray<i32> = vec![mp0(), mp1()].as_slice().into();
+        let arr2: MultiPolygonArray<i32> = vec![mp0(), mp0()].as_slice().into();
 
         assert_eq!(arr1.value(0), arr2.value(0));
         assert_ne!(arr1.value(1), arr2.value(1));

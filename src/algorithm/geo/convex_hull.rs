@@ -80,7 +80,7 @@ impl<O: OffsetSizeTrait> ConvexHull<O> for GeometryArray<O> {
 mod tests {
     use super::ConvexHull;
     use crate::array::{LineStringArray, MultiPointArray};
-    use crate::trait_::GeoArrayAccessor;
+    use crate::trait_::GeometryArrayAccessor;
     use geo::{line_string, polygon, MultiPoint, Point};
 
     #[test]
@@ -98,7 +98,7 @@ mod tests {
             Point::new(0.0, 10.0),
         ]
         .into();
-        let input_array: MultiPointArray<i64> = vec![input_geom].into();
+        let input_array: MultiPointArray<i64> = vec![input_geom].as_slice().into();
         let result_array = input_array.convex_hull();
 
         let expected = polygon![
@@ -126,7 +126,7 @@ mod tests {
             (x: 0.0, y: 10.0),
         ];
 
-        let input_array: LineStringArray<i64> = vec![input_geom].into();
+        let input_array: LineStringArray<i64> = vec![input_geom].as_slice().into();
         let result_array = input_array.convex_hull();
 
         let expected = polygon![

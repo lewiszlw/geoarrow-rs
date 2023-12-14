@@ -1,9 +1,10 @@
 use arrow_array::OffsetSizeTrait;
 use geozero::{GeomProcessor, GeozeroGeometry};
 
-use crate::array::{MultiPolygonArray, MutableMultiPolygonArray};
+use crate::array::multipolygon::MultiPolygonCapacity;
+use crate::array::{MultiPolygonArray, MultiPolygonBuilder};
 use crate::io::geozero::scalar::multipolygon::process_multi_polygon;
-use crate::trait_::GeoArrayAccessor;
+use crate::trait_::GeometryArrayAccessor;
 use crate::GeometryArrayTrait;
 
 impl<O: OffsetSizeTrait> GeozeroGeometry for MultiPolygonArray<O> {
@@ -24,31 +25,32 @@ impl<O: OffsetSizeTrait> GeozeroGeometry for MultiPolygonArray<O> {
 }
 
 /// GeoZero trait to convert to GeoArrow MultiPolygonArray.
-pub trait ToGeoArrowMultiPolygonArray<O: OffsetSizeTrait> {
+pub trait ToMultiPolygonArray<O: OffsetSizeTrait> {
     /// Convert to GeoArrow MultiPolygonArray
     fn to_line_string_array(&self) -> geozero::error::Result<MultiPolygonArray<O>>;
 
-    /// Convert to a GeoArrow MutableMultiPolygonArray
-    fn to_mutable_line_string_array(&self) -> geozero::error::Result<MutableMultiPolygonArray<O>>;
+    /// Convert to a GeoArrow MultiPolygonBuilder
+    fn to_mutable_line_string_array(&self) -> geozero::error::Result<MultiPolygonBuilder<O>>;
 }
 
-impl<T: GeozeroGeometry, O: OffsetSizeTrait> ToGeoArrowMultiPolygonArray<O> for T {
+impl<T: GeozeroGeometry, O: OffsetSizeTrait> ToMultiPolygonArray<O> for T {
     fn to_line_string_array(&self) -> geozero::error::Result<MultiPolygonArray<O>> {
         Ok(self.to_mutable_line_string_array()?.into())
     }
 
-    fn to_mutable_line_string_array(&self) -> geozero::error::Result<MutableMultiPolygonArray<O>> {
-        let mut mutable_array = MutableMultiPolygonArray::<O>::new();
+    fn to_mutable_line_string_array(&self) -> geozero::error::Result<MultiPolygonBuilder<O>> {
+        let mut mutable_array = MultiPolygonBuilder::<O>::new();
         self.process_geom(&mut mutable_array)?;
         Ok(mutable_array)
     }
 }
 
 #[allow(unused_variables)]
-impl<O: OffsetSizeTrait> GeomProcessor for MutableMultiPolygonArray<O> {
+impl<O: OffsetSizeTrait> GeomProcessor for MultiPolygonBuilder<O> {
     fn geometrycollection_begin(&mut self, size: usize, idx: usize) -> geozero::error::Result<()> {
         // reserve `size` geometries
-        self.reserve(0, 0, 0, size);
+        let capacity = MultiPolygonCapacity::new(0, 0, 0, size);
+        self.reserve(capacity);
         Ok(())
     }
 
@@ -67,7 +69,8 @@ impl<O: OffsetSizeTrait> GeomProcessor for MutableMultiPolygonArray<O> {
 
     fn multipolygon_begin(&mut self, size: usize, idx: usize) -> geozero::error::Result<()> {
         // reserve `size` polygons
-        self.reserve(0, 0, size, 0);
+        let capacity = MultiPolygonCapacity::new(0, 0, size, 0);
+        self.reserve(capacity);
 
         // # Safety:
         // This upholds invariants because we separately update the ring offsets in
@@ -85,7 +88,8 @@ impl<O: OffsetSizeTrait> GeomProcessor for MutableMultiPolygonArray<O> {
         // > An untagged Polygon is part of a MultiPolygon
         if tagged {
             // reserve 1 polygon
-            self.reserve(0, 0, 1, 0);
+            let capacity = MultiPolygonCapacity::new(0, 0, 1, 0);
+            self.reserve(capacity);
 
             // # Safety:
             // This upholds invariants because we separately update the ring offsets in
@@ -94,7 +98,8 @@ impl<O: OffsetSizeTrait> GeomProcessor for MutableMultiPolygonArray<O> {
         }
 
         // reserve `size` rings
-        self.reserve(0, size, 0, 0);
+        let capacity = MultiPolygonCapacity::new(0, size, 0, 0);
+        self.reserve(capacity);
 
         // # Safety:
         // This upholds invariants because we separately update the geometry offsets in
@@ -112,7 +117,8 @@ impl<O: OffsetSizeTrait> GeomProcessor for MutableMultiPolygonArray<O> {
         assert!(!tagged);
 
         // reserve `size` coordinates
-        self.reserve(size, 0, 0, 0);
+        let capacity = MultiPolygonCapacity::new(size, 0, 0, 0);
+        self.reserve(capacity);
 
         // # Safety:
         // This upholds invariants because we separately update the ring offsets in
@@ -126,14 +132,14 @@ impl<O: OffsetSizeTrait> GeomProcessor for MutableMultiPolygonArray<O> {
 mod test {
     use super::*;
     use crate::test::multipolygon::{mp0, mp1};
-    use crate::trait_::GeoArrayAccessor;
+    use crate::trait_::GeometryArrayAccessor;
     use geo::Geometry;
     use geozero::error::Result;
     use geozero::ToWkt;
 
     #[test]
     fn geozero_process_geom() -> geozero::error::Result<()> {
-        let arr: MultiPolygonArray<i64> = vec![mp0(), mp1()].into();
+        let arr: MultiPolygonArray<i64> = vec![mp0(), mp1()].as_slice().into();
         let wkt = arr.to_wkt()?;
         let expected = "GEOMETRYCOLLECTION(MULTIPOLYGON(((-111 45,-111 41,-104 41,-104 45,-111 45)),((-111 45,-111 41,-104 41,-104 45,-111 45),(-110 44,-110 42,-105 42,-105 44,-110 44))),MULTIPOLYGON(((-111 45,-111 41,-104 41,-104 45,-111 45)),((-110 44,-110 42,-105 42,-105 44,-110 44))))";
         assert_eq!(wkt, expected);

@@ -1,6 +1,6 @@
 use crate::array::{
     GeometryArray, LineStringArray, MultiLineStringArray, MultiPointArray, MultiPolygonArray,
-    MutablePointArray, PointArray, PolygonArray, WKBArray,
+    PointArray, PointBuilder, PolygonArray, WKBArray,
 };
 use crate::GeometryArrayTrait;
 use arrow_array::OffsetSizeTrait;
@@ -18,7 +18,7 @@ use geo::algorithm::centroid::Centroid as GeoCentroid;
 /// ```
 /// use geoarrow::algorithm::geo::Centroid;
 /// use geoarrow::array::PolygonArray;
-/// use geoarrow::trait_::GeoArrayAccessor;
+/// use geoarrow::trait_::GeometryArrayAccessor;
 /// use geo::{point, polygon};
 ///
 /// // rhombus shaped polygon
@@ -29,7 +29,7 @@ use geo::algorithm::centroid::Centroid as GeoCentroid;
 ///     (x: 1., y: -1.),
 ///     (x: -2., y: 1.),
 /// ];
-/// let polygon_array: PolygonArray<i32> = vec![polygon].into();
+/// let polygon_array: PolygonArray<i32> = vec![polygon].as_slice().into();
 ///
 /// assert_eq!(
 ///     Some(point!(x: 1., y: 1.)),
@@ -44,14 +44,14 @@ pub trait Centroid {
     /// ```
     /// use geoarrow::algorithm::geo::Centroid;
     /// use geoarrow::array::LineStringArray;
-    /// use geoarrow::trait_::GeoArrayAccessor;
+    /// use geoarrow::trait_::GeometryArrayAccessor;
     /// use geo::{line_string, point};
     ///
     /// let line_string = line_string![
     ///     (x: 40.02f64, y: 116.34),
     ///     (x: 40.02f64, y: 118.23),
     /// ];
-    /// let line_string_array: LineStringArray<i32> = vec![line_string].into();
+    /// let line_string_array: LineStringArray<i32> = vec![line_string].as_slice().into();
     ///
     /// assert_eq!(
     ///     Some(point!(x: 40.02, y: 117.285)),
@@ -72,7 +72,7 @@ macro_rules! iter_geo_impl {
     ($type:ty) => {
         impl<O: OffsetSizeTrait> Centroid for $type {
             fn centroid(&self) -> PointArray {
-                let mut output_array = MutablePointArray::with_capacity(self.len());
+                let mut output_array = PointBuilder::with_capacity(self.len());
                 self.iter_geo().for_each(|maybe_g| {
                     output_array.push_point(maybe_g.and_then(|g| g.centroid()).as_ref())
                 });

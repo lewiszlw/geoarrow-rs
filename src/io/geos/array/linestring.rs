@@ -1,6 +1,7 @@
 use arrow_array::OffsetSizeTrait;
 
-use crate::array::{LineStringArray, MutableLineStringArray};
+use crate::array::linestring::LineStringCapacity;
+use crate::array::{LineStringArray, LineStringBuilder};
 use crate::error::{GeoArrowError, Result};
 use crate::geo_traits::LineStringTrait;
 use crate::io::geos::scalar::GEOSLineString;
@@ -9,7 +10,7 @@ use crate::io::geos::scalar::GEOSLineString;
 // implementing geometry access traits on GEOS geometries that yield ConstGeometry objects with two
 // lifetimes seemed really, really hard. Ideally one day we can unify the two branches!
 
-impl<O: OffsetSizeTrait> MutableLineStringArray<O> {
+impl<O: OffsetSizeTrait> LineStringBuilder<O> {
     /// Add a new GEOS LineString to the end of this array.
     ///
     /// # Errors
@@ -29,7 +30,7 @@ impl<O: OffsetSizeTrait> MutableLineStringArray<O> {
 
             for coord_idx in 0..line_string.num_coords() {
                 let coord = line_string.coord(coord_idx).unwrap();
-                self.coords.push_coord(coord);
+                self.coords.push_coord(&coord);
             }
 
             self.validity.append(true);
@@ -55,8 +56,9 @@ pub(crate) fn second_pass<'a, O: OffsetSizeTrait>(
     geoms: impl Iterator<Item = Option<GEOSLineString<'a>>>,
     coord_capacity: usize,
     geom_capacity: usize,
-) -> MutableLineStringArray<O> {
-    let mut array = MutableLineStringArray::with_capacities(coord_capacity, geom_capacity);
+) -> LineStringBuilder<O> {
+    let capacity = LineStringCapacity::new(coord_capacity, geom_capacity);
+    let mut array = LineStringBuilder::with_capacity(capacity);
 
     geoms
         .into_iter()
@@ -66,7 +68,7 @@ pub(crate) fn second_pass<'a, O: OffsetSizeTrait>(
     array
 }
 
-impl<O: OffsetSizeTrait> TryFrom<Vec<Option<geos::Geometry<'_>>>> for MutableLineStringArray<O> {
+impl<O: OffsetSizeTrait> TryFrom<Vec<Option<geos::Geometry<'_>>>> for LineStringBuilder<O> {
     type Error = GeoArrowError;
 
     fn try_from(value: Vec<Option<geos::Geometry<'_>>>) -> Result<Self> {
@@ -90,7 +92,7 @@ impl<'a, O: OffsetSizeTrait> TryFrom<Vec<Option<geos::Geometry<'a>>>> for LineSt
     type Error = GeoArrowError;
 
     fn try_from(value: Vec<Option<geos::Geometry<'a>>>) -> std::result::Result<Self, Self::Error> {
-        let mutable_arr: MutableLineStringArray<O> = value.try_into()?;
+        let mutable_arr: LineStringBuilder<O> = value.try_into()?;
         Ok(mutable_arr.into())
     }
 }

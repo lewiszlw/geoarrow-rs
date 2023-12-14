@@ -9,7 +9,7 @@ use std::any::Any;
 use std::sync::Arc;
 
 /// A trait of common methods that all geometry arrays in this crate implement.
-pub trait GeometryArrayTrait<'a>: std::fmt::Debug + Send + Sync {
+pub trait GeometryArrayTrait: std::fmt::Debug + Send + Sync {
     /// Returns the array as [`Any`] so that it can be
     /// downcasted to a specific implementation.
     ///
@@ -55,7 +55,7 @@ pub trait GeometryArrayTrait<'a>: std::fmt::Debug + Send + Sync {
     /// use geo::point;
     ///
     /// let point = point!(x: 1., y: 2.);
-    /// let point_array: PointArray = vec![point].into();
+    /// let point_array: PointArray = vec![point].as_slice().into();
     ///
     /// assert!(matches!(point_array.data_type(), GeoDataType::Point(_)));
     /// ```
@@ -78,17 +78,8 @@ pub trait GeometryArrayTrait<'a>: std::fmt::Debug + Send + Sync {
     /// This is `O(1)`.
     fn into_array_ref(self) -> ArrayRef;
 
-    /// Create a new array with replaced coordinates
-    ///
-    /// This is useful if you want to apply an operation to _every_ coordinate in unison, such as a
-    /// reprojection or a scaling operation, with no regards to each individual geometry
-    fn with_coords(self, coords: CoordBuffer) -> Self;
-
     /// Get the coordinate type of this geometry array, either interleaved or separated.
     fn coord_type(&self) -> CoordType;
-
-    /// Cast the coordinate buffer of this geometry array to the given coordinate type.
-    fn into_coord_type(self, coord_type: CoordType) -> Self;
 
     /// The number of geometries contained in this array.
     fn len(&self) -> usize;
@@ -135,17 +126,6 @@ pub trait GeometryArrayTrait<'a>: std::fmt::Debug + Send + Sync {
         !self.is_null(i)
     }
 
-    /// Returns a zero-copy slice of this array with the indicated offset and length.
-    ///
-    /// # Panic
-    /// This function panics iff `offset + length > self.len()`.
-    #[must_use]
-    fn slice(&self, offset: usize, length: usize) -> Self;
-
-    /// A slice that fully copies the contents of the underlying buffer
-    #[must_use]
-    fn owned_slice(&self, offset: usize, length: usize) -> Self;
-
     // /// Clones this [`GeometryArray`] with a new new assigned bitmap.
     // /// # Panic
     // /// This function panics iff `validity.len() != self.len()`.
@@ -161,9 +141,9 @@ pub trait GeometryArrayTrait<'a>: std::fmt::Debug + Send + Sync {
 ///
 /// The value at null indexes is unspecified, and implementations must not rely on a specific
 /// value such as [`Default::default`] being returned, however, it must not be undefined
-pub trait GeoArrayAccessor<'a>: GeometryArrayTrait<'a> {
+pub trait GeometryArrayAccessor<'a>: GeometryArrayTrait {
     /// The [geoarrow scalar object][crate::scalar] for this geometry array type.
-    type Item: Send + Sync + GeometryScalarTrait<'a>;
+    type Item: Send + Sync + GeometryScalarTrait;
 
     /// The [`geo`] scalar object for this geometry array type.
     type ItemGeo: From<Self::Item>;
@@ -205,13 +185,36 @@ pub trait GeoArrayAccessor<'a>: GeometryArrayTrait<'a> {
     }
 }
 
+/// Horrible name, to be changed to a better name in the future!!
+pub trait GeometryArraySelfMethods {
+    /// Create a new array with replaced coordinates
+    ///
+    /// This is useful if you want to apply an operation to _every_ coordinate in unison, such as a
+    /// reprojection or a scaling operation, with no regards to each individual geometry
+    fn with_coords(self, coords: CoordBuffer) -> Self;
+
+    /// Cast the coordinate buffer of this geometry array to the given coordinate type.
+    fn into_coord_type(self, coord_type: CoordType) -> Self;
+
+    /// Returns a zero-copy slice of this array with the indicated offset and length.
+    ///
+    /// # Panic
+    /// This function panics iff `offset + length > self.len()`.
+    #[must_use]
+    fn slice(&self, offset: usize, length: usize) -> Self;
+
+    /// A slice that fully copies the contents of the underlying buffer
+    #[must_use]
+    fn owned_slice(&self, offset: usize, length: usize) -> Self;
+}
+
 pub trait IntoArrow {
     type ArrowArray;
 
     fn into_arrow(self) -> Self::ArrowArray;
 }
 
-pub trait GeometryScalarTrait<'a> {
+pub trait GeometryScalarTrait {
     /// The [`geo`] scalar object for this geometry array type.
     type ScalarGeo;
 
@@ -222,8 +225,8 @@ pub trait GeometryScalarTrait<'a> {
 /// Mutable arrays cannot be cloned but can be mutated in place,
 /// thereby making them useful to perform numeric operations without allocations.
 /// As in [`GeometryArrayTrait`], concrete arrays (such as
-/// [`MutablePointArray`][crate::array::MutablePointArray]) implement how they are mutated.
-pub trait MutableGeometryArray: std::fmt::Debug + Send + Sync {
+/// [`PointBuilder`][crate::array::PointBuilder]) implement how they are mutated.
+pub trait GeometryArrayBuilder: std::fmt::Debug + Send + Sync {
     /// The length of the array.
     fn len(&self) -> usize;
 
@@ -245,12 +248,6 @@ pub trait MutableGeometryArray: std::fmt::Debug + Send + Sync {
     // fn as_arc(&mut self) -> std::sync::Arc<GeometryArrayTrait> {
     //     self.as_box().into()
     // }
-
-    /// Convert to `Any`, to enable dynamic casting.
-    fn as_any(&self) -> &dyn Any;
-
-    /// Convert to mutable `Any`, to enable dynamic casting.
-    fn as_mut_any(&mut self) -> &mut dyn Any;
 
     // /// Adds a new null element to the array.
     // fn push_null(&mut self);

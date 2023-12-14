@@ -5,11 +5,11 @@ use arrow_array::{Array, Float64Array, StructArray};
 use arrow_buffer::{NullBuffer, ScalarBuffer};
 use arrow_schema::{DataType, Field};
 
-use crate::array::{CoordType, MutableSeparatedCoordBuffer};
+use crate::array::{CoordType, SeparatedCoordBufferBuilder};
 use crate::error::{GeoArrowError, Result};
 use crate::geo_traits::CoordTrait;
 use crate::scalar::SeparatedCoord;
-use crate::trait_::{GeoArrayAccessor, IntoArrow};
+use crate::trait_::{GeometryArrayAccessor, GeometryArraySelfMethods, IntoArrow};
 use crate::GeometryArrayTrait;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -64,7 +64,7 @@ impl SeparatedCoordBuffer {
     }
 }
 
-impl<'a> GeometryArrayTrait<'a> for SeparatedCoordBuffer {
+impl GeometryArrayTrait for SeparatedCoordBuffer {
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }
@@ -89,16 +89,8 @@ impl<'a> GeometryArrayTrait<'a> for SeparatedCoordBuffer {
         Arc::new(self.into_arrow())
     }
 
-    fn with_coords(self, _coords: crate::array::CoordBuffer) -> Self {
-        unimplemented!();
-    }
-
     fn coord_type(&self) -> CoordType {
         CoordType::Separated
-    }
-
-    fn into_coord_type(self, _coord_type: CoordType) -> Self {
-        panic!("into_coord_type only implemented on CoordBuffer");
     }
 
     fn len(&self) -> usize {
@@ -107,6 +99,16 @@ impl<'a> GeometryArrayTrait<'a> for SeparatedCoordBuffer {
 
     fn validity(&self) -> Option<&NullBuffer> {
         panic!("coordinate arrays don't have their own validity arrays")
+    }
+}
+
+impl GeometryArraySelfMethods for SeparatedCoordBuffer {
+    fn with_coords(self, _coords: crate::array::CoordBuffer) -> Self {
+        unimplemented!();
+    }
+
+    fn into_coord_type(self, _coord_type: CoordType) -> Self {
+        panic!("into_coord_type only implemented on CoordBuffer");
     }
 
     fn slice(&self, offset: usize, length: usize) -> Self {
@@ -126,7 +128,7 @@ impl<'a> GeometryArrayTrait<'a> for SeparatedCoordBuffer {
     }
 }
 
-impl<'a> GeoArrayAccessor<'a> for SeparatedCoordBuffer {
+impl<'a> GeometryArrayAccessor<'a> for SeparatedCoordBuffer {
     type Item = SeparatedCoord<'a>;
     type ItemGeo = geo::Coord;
 
@@ -183,9 +185,9 @@ impl TryFrom<(Vec<f64>, Vec<f64>)> for SeparatedCoordBuffer {
     }
 }
 
-impl<G: CoordTrait<T = f64>> From<Vec<G>> for SeparatedCoordBuffer {
-    fn from(other: Vec<G>) -> Self {
-        let mut_arr: MutableSeparatedCoordBuffer = other.into();
+impl<G: CoordTrait<T = f64>> From<&[G]> for SeparatedCoordBuffer {
+    fn from(other: &[G]) -> Self {
+        let mut_arr: SeparatedCoordBufferBuilder = other.into();
         mut_arr.into()
     }
 }

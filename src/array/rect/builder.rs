@@ -8,20 +8,20 @@ use arrow_buffer::NullBufferBuilder;
 use std::sync::Arc;
 
 #[derive(Debug)]
-pub struct MutableRectArray {
+pub struct RectBuilder {
     /// A Buffer of float values for the bounding rectangles
     /// Invariant: the length of values must always be a multiple of 4
     pub values: Vec<f64>,
     pub validity: NullBufferBuilder,
 }
 
-impl MutableRectArray {
-    /// Creates a new empty [`MutableRectArray`].
+impl RectBuilder {
+    /// Creates a new empty [`RectBuilder`].
     pub fn new() -> Self {
         Self::with_capacity(0)
     }
 
-    /// Creates a new [`MutableRectArray`] with a capacity.
+    /// Creates a new [`RectBuilder`] with a capacity.
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             values: Vec::with_capacity(capacity * 4),
@@ -38,23 +38,23 @@ impl MutableRectArray {
         self.values.reserve(additional * 4);
     }
 
-    // /// Reserves the minimum capacity for at least `additional` more points to
-    // /// be inserted in the given `Vec<T>`. Unlike [`reserve`], this will not
-    // /// deliberately over-allocate to speculatively avoid frequent allocations.
-    // /// After calling `reserve_exact`, capacity will be greater than or equal to
-    // /// `self.len() + additional`. Does nothing if the capacity is already
-    // /// sufficient.
-    // ///
-    // /// Note that the allocator may give the collection more space than it
-    // /// requests. Therefore, capacity can not be relied upon to be precisely
-    // /// minimal. Prefer [`reserve`] if future insertions are expected.
-    // ///
-    // /// [`reserve`]: Vec::reserve
-    // pub fn reserve_exact(&mut self, additional: usize) {
-    //     self.values.reserve_exact(additional * 4);
-    // }
+    /// Reserves the minimum capacity for at least `additional` more points to
+    /// be inserted in the given `Vec<T>`. Unlike [`reserve`], this will not
+    /// deliberately over-allocate to speculatively avoid frequent allocations.
+    /// After calling `reserve_exact`, capacity will be greater than or equal to
+    /// `self.len() + additional`. Does nothing if the capacity is already
+    /// sufficient.
+    ///
+    /// Note that the allocator may give the collection more space than it
+    /// requests. Therefore, capacity can not be relied upon to be precisely
+    /// minimal. Prefer [`reserve`] if future insertions are expected.
+    ///
+    /// [`reserve`]: Vec::reserve
+    pub fn reserve_exact(&mut self, additional: usize) {
+        self.values.reserve_exact(additional * 4);
+    }
 
-    /// The canonical method to create a [`MutableRectArray`] out of its internal components.
+    /// The canonical method to create a [`RectBuilder`] out of its internal components.
     ///
     /// # Implementation
     ///
@@ -74,7 +74,7 @@ impl MutableRectArray {
         Ok(Self { values, validity })
     }
 
-    /// Extract the low-level APIs from the [`MutableRectArray`].
+    /// Extract the low-level APIs from the [`RectBuilder`].
     pub fn into_inner(self) -> (Vec<f64>, NullBufferBuilder) {
         (self.values, self.validity)
     }
@@ -110,15 +110,35 @@ impl MutableRectArray {
     pub fn into_arrow_ref(self) -> Arc<dyn Array> {
         Arc::new(self.into_arrow())
     }
+
+    pub fn from_rects<'a>(
+        geoms: impl ExactSizeIterator + Iterator<Item = &'a (impl RectTrait<T = f64> + 'a)>,
+    ) -> Self {
+        let mut mutable_array = Self::with_capacity(geoms.len());
+        geoms
+            .into_iter()
+            .for_each(|rect| mutable_array.push_rect(Some(rect)));
+        mutable_array
+    }
+
+    pub fn from_nullable_rects<'a>(
+        geoms: impl ExactSizeIterator + Iterator<Item = Option<&'a (impl RectTrait<T = f64> + 'a)>>,
+    ) -> Self {
+        let mut mutable_array = Self::with_capacity(geoms.len());
+        geoms
+            .into_iter()
+            .for_each(|maybe_rect| mutable_array.push_rect(maybe_rect));
+        mutable_array
+    }
 }
 
-impl Default for MutableRectArray {
+impl Default for RectBuilder {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl IntoArrow for MutableRectArray {
+impl IntoArrow for RectBuilder {
     type ArrowArray = FixedSizeListArray;
 
     fn into_arrow(self) -> Self::ArrowArray {
@@ -127,35 +147,20 @@ impl IntoArrow for MutableRectArray {
     }
 }
 
-impl From<MutableRectArray> for RectArray {
-    fn from(other: MutableRectArray) -> Self {
+impl From<RectBuilder> for RectArray {
+    fn from(other: RectBuilder) -> Self {
         RectArray::new(other.values.into(), other.validity.finish_cloned())
     }
 }
 
-fn first_pass<'a>(
-    geoms: impl Iterator<Item = Option<&'a (impl RectTrait<T = f64> + 'a)>>,
-    num_geoms: usize,
-) -> MutableRectArray {
-    let mut array = MutableRectArray::with_capacity(num_geoms);
-
-    geoms
-        .into_iter()
-        .for_each(|maybe_rect| array.push_rect(maybe_rect));
-
-    array
-}
-
-impl<G: RectTrait<T = f64>> From<Vec<G>> for MutableRectArray {
-    fn from(geoms: Vec<G>) -> Self {
-        let num_geoms = geoms.len();
-        first_pass(geoms.iter().map(Some), num_geoms)
+impl<G: RectTrait<T = f64>> From<&[G]> for RectBuilder {
+    fn from(geoms: &[G]) -> Self {
+        RectBuilder::from_rects(geoms.iter())
     }
 }
 
-impl<G: RectTrait<T = f64>> From<Vec<Option<G>>> for MutableRectArray {
+impl<G: RectTrait<T = f64>> From<Vec<Option<G>>> for RectBuilder {
     fn from(geoms: Vec<Option<G>>) -> Self {
-        let num_geoms = geoms.len();
-        first_pass(geoms.iter().map(|x| x.as_ref()), num_geoms)
+        RectBuilder::from_nullable_rects(geoms.iter().map(|x| x.as_ref()))
     }
 }

@@ -6,16 +6,22 @@ use arrow_buffer::bit_iterator::BitIterator;
 use arrow_buffer::{NullBuffer, ScalarBuffer};
 use arrow_schema::{DataType, Field};
 
-use crate::array::rect::MutableRectArray;
+use crate::array::rect::RectBuilder;
 use crate::array::zip_validity::ZipValidity;
 use crate::array::{CoordBuffer, CoordType};
 use crate::datatypes::GeoDataType;
 use crate::geo_traits::RectTrait;
 use crate::scalar::Rect;
-use crate::trait_::{GeoArrayAccessor, IntoArrow};
+use crate::trait_::{GeometryArrayAccessor, GeometryArraySelfMethods, IntoArrow};
 use crate::util::owned_slice_validity;
 use crate::GeometryArrayTrait;
 
+/// An immutable array of Rect geometries.
+///
+/// This is **not** an array type defined by the GeoArrow specification (as of spec version 0.1)
+/// but is included here for parity with georust/geo, and to save memory for the output of
+/// `bounds()`.
+///
 /// Internally this is implemented as a FixedSizeList[4], laid out as minx, miny, maxx, maxy.
 #[derive(Debug, Clone, PartialEq)]
 pub struct RectArray {
@@ -58,7 +64,7 @@ impl RectArray {
     }
 }
 
-impl<'a> GeometryArrayTrait<'a> for RectArray {
+impl GeometryArrayTrait for RectArray {
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }
@@ -88,15 +94,7 @@ impl<'a> GeometryArrayTrait<'a> for RectArray {
         Arc::new(self.into_arrow())
     }
 
-    fn with_coords(self, _coords: CoordBuffer) -> Self {
-        unimplemented!()
-    }
-
     fn coord_type(&self) -> CoordType {
-        unimplemented!()
-    }
-
-    fn into_coord_type(self, _coord_type: CoordType) -> Self {
         unimplemented!()
     }
 
@@ -110,6 +108,16 @@ impl<'a> GeometryArrayTrait<'a> for RectArray {
     #[inline]
     fn validity(&self) -> Option<&NullBuffer> {
         self.validity.as_ref()
+    }
+}
+
+impl GeometryArraySelfMethods for RectArray {
+    fn with_coords(self, _coords: CoordBuffer) -> Self {
+        unimplemented!()
+    }
+
+    fn into_coord_type(self, _coord_type: CoordType) -> Self {
+        unimplemented!()
     }
 
     /// Slices this [`RectArray`] in place.
@@ -137,7 +145,7 @@ impl<'a> GeometryArrayTrait<'a> for RectArray {
     }
 }
 
-impl<'a> GeoArrayAccessor<'a> for RectArray {
+impl<'a> GeometryArrayAccessor<'a> for RectArray {
     type Item = Rect<'a>;
     type ItemGeo = geo::Rect;
 
@@ -157,16 +165,16 @@ impl IntoArrow for RectArray {
     }
 }
 
-impl<G: RectTrait<T = f64>> From<Vec<G>> for RectArray {
-    fn from(other: Vec<G>) -> Self {
-        let mut_arr: MutableRectArray = other.into();
+impl<G: RectTrait<T = f64>> From<&[G]> for RectArray {
+    fn from(other: &[G]) -> Self {
+        let mut_arr: RectBuilder = other.into();
         mut_arr.into()
     }
 }
 
 impl<G: RectTrait<T = f64>> From<Vec<Option<G>>> for RectArray {
     fn from(other: Vec<Option<G>>) -> Self {
-        let mut_arr: MutableRectArray = other.into();
+        let mut_arr: RectBuilder = other.into();
         mut_arr.into()
     }
 }

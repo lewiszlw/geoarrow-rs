@@ -1,6 +1,6 @@
-use crate::array::{MutablePointArray, PointArray};
+use crate::array::{PointArray, PointBuilder};
 use crate::io::geozero::scalar::point::process_point;
-use crate::trait_::GeoArrayAccessor;
+use crate::trait_::GeometryArrayAccessor;
 use crate::GeometryArrayTrait;
 use geozero::{GeomProcessor, GeozeroGeometry};
 
@@ -22,28 +22,28 @@ impl GeozeroGeometry for PointArray {
 }
 
 /// GeoZero trait to convert to GeoArrow PointArray.
-pub trait ToGeoArrowPointArray {
+pub trait ToPointArray {
     /// Convert to GeoArrow PointArray
     fn to_point_array(&self) -> geozero::error::Result<PointArray>;
 
-    /// Convert to a GeoArrow MutablePointArray
-    fn to_mutable_point_array(&self) -> geozero::error::Result<MutablePointArray>;
+    /// Convert to a GeoArrow PointBuilder
+    fn to_mutable_point_array(&self) -> geozero::error::Result<PointBuilder>;
 }
 
-impl<T: GeozeroGeometry> ToGeoArrowPointArray for T {
+impl<T: GeozeroGeometry> ToPointArray for T {
     fn to_point_array(&self) -> geozero::error::Result<PointArray> {
         Ok(self.to_mutable_point_array()?.into())
     }
 
-    fn to_mutable_point_array(&self) -> geozero::error::Result<MutablePointArray> {
-        let mut mutable_point_array = MutablePointArray::new();
+    fn to_mutable_point_array(&self) -> geozero::error::Result<PointBuilder> {
+        let mut mutable_point_array = PointBuilder::new();
         self.process_geom(&mut mutable_point_array)?;
         Ok(mutable_point_array)
     }
 }
 
 #[allow(unused_variables)]
-impl GeomProcessor for MutablePointArray {
+impl GeomProcessor for PointBuilder {
     fn empty_point(&mut self, idx: usize) -> geozero::error::Result<()> {
         self.push_empty();
         Ok(())
@@ -161,8 +161,8 @@ impl GeomProcessor for MutablePointArray {
 
 #[cfg(test)]
 mod test {
-    use super::ToGeoArrowPointArray;
-    use crate::trait_::GeoArrayAccessor;
+    use super::ToPointArray;
+    use crate::trait_::GeometryArrayAccessor;
     use geo::{line_string, point, Geometry, GeometryCollection, LineString, Point};
 
     fn p0() -> Point {

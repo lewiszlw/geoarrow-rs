@@ -9,7 +9,7 @@ use crate::datatypes::GeoDataType;
 use crate::error::{GeoArrowError, Result};
 use crate::geo_traits::LineStringTrait;
 use crate::scalar::LineString;
-use crate::trait_::{GeoArrayAccessor, IntoArrow};
+use crate::trait_::{GeometryArrayAccessor, GeometryArraySelfMethods, IntoArrow};
 use crate::util::{owned_slice_offsets, owned_slice_validity};
 use crate::GeometryArrayTrait;
 use arrow_array::{Array, ArrayRef, GenericListArray, LargeListArray, ListArray, OffsetSizeTrait};
@@ -17,7 +17,7 @@ use arrow_buffer::bit_iterator::BitIterator;
 use arrow_buffer::{NullBuffer, OffsetBuffer};
 use arrow_schema::{DataType, Field, FieldRef};
 
-use super::MutableLineStringArray;
+use super::LineStringBuilder;
 
 /// An immutable array of LineString geometries using GeoArrow's in-memory representation.
 ///
@@ -119,7 +119,7 @@ impl<O: OffsetSizeTrait> LineStringArray<O> {
     }
 }
 
-impl<'a, O: OffsetSizeTrait> GeometryArrayTrait<'a> for LineStringArray<O> {
+impl<O: OffsetSizeTrait> GeometryArrayTrait for LineStringArray<O> {
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }
@@ -149,21 +149,8 @@ impl<'a, O: OffsetSizeTrait> GeometryArrayTrait<'a> for LineStringArray<O> {
         Arc::new(self.into_arrow())
     }
 
-    fn with_coords(self, coords: CoordBuffer) -> Self {
-        assert_eq!(coords.len(), self.coords.len());
-        Self::new(coords, self.geom_offsets, self.validity)
-    }
-
     fn coord_type(&self) -> CoordType {
         self.coords.coord_type()
-    }
-
-    fn into_coord_type(self, coord_type: CoordType) -> Self {
-        Self::new(
-            self.coords.into_coord_type(coord_type),
-            self.geom_offsets,
-            self.validity,
-        )
     }
 
     /// Returns the number of geometries in this array
@@ -177,6 +164,21 @@ impl<'a, O: OffsetSizeTrait> GeometryArrayTrait<'a> for LineStringArray<O> {
     #[inline]
     fn validity(&self) -> Option<&NullBuffer> {
         self.validity.as_ref()
+    }
+}
+
+impl<O: OffsetSizeTrait> GeometryArraySelfMethods for LineStringArray<O> {
+    fn with_coords(self, coords: CoordBuffer) -> Self {
+        assert_eq!(coords.len(), self.coords.len());
+        Self::new(coords, self.geom_offsets, self.validity)
+    }
+
+    fn into_coord_type(self, coord_type: CoordType) -> Self {
+        Self::new(
+            self.coords.into_coord_type(coord_type),
+            self.geom_offsets,
+            self.validity,
+        )
     }
 
     /// Slices this [`LineStringArray`] in place.
@@ -235,7 +237,7 @@ impl<'a, O: OffsetSizeTrait> GeometryArrayTrait<'a> for LineStringArray<O> {
     }
 }
 
-impl<'a, O: OffsetSizeTrait> GeoArrayAccessor<'a> for LineStringArray<O> {
+impl<'a, O: OffsetSizeTrait> GeometryArrayAccessor<'a> for LineStringArray<O> {
     type Item = LineString<'a, O>;
     type ItemGeo = geo::LineString;
 
@@ -358,14 +360,14 @@ impl TryFrom<&dyn Array> for LineStringArray<i64> {
 
 impl<O: OffsetSizeTrait, G: LineStringTrait<T = f64>> From<Vec<Option<G>>> for LineStringArray<O> {
     fn from(other: Vec<Option<G>>) -> Self {
-        let mut_arr: MutableLineStringArray<O> = other.into();
+        let mut_arr: LineStringBuilder<O> = other.into();
         mut_arr.into()
     }
 }
 
-impl<O: OffsetSizeTrait, G: LineStringTrait<T = f64>> From<Vec<G>> for LineStringArray<O> {
-    fn from(other: Vec<G>) -> Self {
-        let mut_arr: MutableLineStringArray<O> = other.into();
+impl<O: OffsetSizeTrait, G: LineStringTrait<T = f64>> From<&[G]> for LineStringArray<O> {
+    fn from(other: &[G]) -> Self {
+        let mut_arr: LineStringBuilder<O> = other.into();
         mut_arr.into()
     }
 }
@@ -374,7 +376,7 @@ impl<O: OffsetSizeTrait, G: LineStringTrait<T = f64>> From<bumpalo::collections:
     for LineStringArray<O>
 {
     fn from(other: bumpalo::collections::Vec<'_, Option<G>>) -> Self {
-        let mut_arr: MutableLineStringArray<O> = other.into();
+        let mut_arr: LineStringBuilder<O> = other.into();
         mut_arr.into()
     }
 }
@@ -383,7 +385,7 @@ impl<O: OffsetSizeTrait, G: LineStringTrait<T = f64>> From<bumpalo::collections:
     for LineStringArray<O>
 {
     fn from(other: bumpalo::collections::Vec<'_, G>) -> Self {
-        let mut_arr: MutableLineStringArray<O> = other.into();
+        let mut_arr: LineStringBuilder<O> = other.into();
         mut_arr.into()
     }
 }
@@ -400,7 +402,7 @@ impl<O: OffsetSizeTrait> TryFrom<WKBArray<O>> for LineStringArray<O> {
     type Error = GeoArrowError;
 
     fn try_from(value: WKBArray<O>) -> Result<Self> {
-        let mut_arr: MutableLineStringArray<O> = value.try_into()?;
+        let mut_arr: LineStringBuilder<O> = value.try_into()?;
         Ok(mut_arr.into())
     }
 }
@@ -430,7 +432,7 @@ impl TryFrom<LineStringArray<i64>> for LineStringArray<i32> {
 /// Default to an empty array
 impl<O: OffsetSizeTrait> Default for LineStringArray<O> {
     fn default() -> Self {
-        MutableLineStringArray::default().into()
+        LineStringBuilder::default().into()
     }
 }
 
@@ -463,7 +465,7 @@ mod test {
 
     #[test]
     fn geo_roundtrip_accurate() {
-        let arr: LineStringArray<i64> = vec![ls0(), ls1()].into();
+        let arr: LineStringArray<i64> = vec![ls0(), ls1()].as_slice().into();
         assert_eq!(arr.value_as_geo(0), ls0());
         assert_eq!(arr.value_as_geo(1), ls1());
     }
@@ -478,7 +480,7 @@ mod test {
 
     // #[test]
     // fn rstar_integration() {
-    //     let arr: LineStringArray = vec![ls0(), ls1()].into();
+    //     let arr: LineStringArray = vec![ls0(), ls1()].as_slice().into();
     //     let tree = arr.rstar_tree();
 
     //     let search_box = AABB::from_corners([3.5, 5.5], [4.5, 6.5]);
@@ -494,7 +496,7 @@ mod test {
 
     #[test]
     fn slice() {
-        let arr: LineStringArray<i64> = vec![ls0(), ls1()].into();
+        let arr: LineStringArray<i64> = vec![ls0(), ls1()].as_slice().into();
         let sliced = arr.slice(1, 1);
         assert_eq!(sliced.len(), 1);
         assert_eq!(sliced.get_as_geo(0), Some(ls1()));
@@ -502,7 +504,7 @@ mod test {
 
     #[test]
     fn owned_slice() {
-        let arr: LineStringArray<i64> = vec![ls0(), ls1()].into();
+        let arr: LineStringArray<i64> = vec![ls0(), ls1()].as_slice().into();
         let sliced = arr.owned_slice(1, 1);
 
         // assert!(

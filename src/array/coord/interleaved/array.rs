@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
-use crate::array::{CoordType, MutableInterleavedCoordBuffer};
+use crate::array::{CoordType, InterleavedCoordBufferBuilder};
 use crate::error::{GeoArrowError, Result};
 use crate::geo_traits::CoordTrait;
 use crate::scalar::InterleavedCoord;
-use crate::trait_::{GeoArrayAccessor, IntoArrow};
+use crate::trait_::{GeometryArrayAccessor, GeometryArraySelfMethods, IntoArrow};
 use crate::GeometryArrayTrait;
 use arrow_array::{Array, FixedSizeListArray, Float64Array};
 use arrow_buffer::{NullBuffer, ScalarBuffer};
@@ -56,7 +56,7 @@ impl InterleavedCoordBuffer {
     }
 }
 
-impl<'a> GeometryArrayTrait<'a> for InterleavedCoordBuffer {
+impl GeometryArrayTrait for InterleavedCoordBuffer {
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }
@@ -81,16 +81,8 @@ impl<'a> GeometryArrayTrait<'a> for InterleavedCoordBuffer {
         Arc::new(self.into_arrow())
     }
 
-    fn with_coords(self, _coords: crate::array::CoordBuffer) -> Self {
-        unimplemented!();
-    }
-
     fn coord_type(&self) -> CoordType {
         CoordType::Interleaved
-    }
-
-    fn into_coord_type(self, _coord_type: CoordType) -> Self {
-        panic!("into_coord_type only implemented on CoordBuffer");
     }
 
     fn len(&self) -> usize {
@@ -99,6 +91,16 @@ impl<'a> GeometryArrayTrait<'a> for InterleavedCoordBuffer {
 
     fn validity(&self) -> Option<&NullBuffer> {
         panic!("coordinate arrays don't have their own validity arrays")
+    }
+}
+
+impl GeometryArraySelfMethods for InterleavedCoordBuffer {
+    fn with_coords(self, _coords: crate::array::CoordBuffer) -> Self {
+        unimplemented!();
+    }
+
+    fn into_coord_type(self, _coord_type: CoordType) -> Self {
+        panic!("into_coord_type only implemented on CoordBuffer");
     }
 
     fn slice(&self, offset: usize, length: usize) -> Self {
@@ -117,7 +119,7 @@ impl<'a> GeometryArrayTrait<'a> for InterleavedCoordBuffer {
     }
 }
 
-impl<'a> GeoArrayAccessor<'a> for InterleavedCoordBuffer {
+impl<'a> GeometryArrayAccessor<'a> for InterleavedCoordBuffer {
     type Item = InterleavedCoord<'a>;
     type ItemGeo = geo::Coord;
 
@@ -178,9 +180,9 @@ impl TryFrom<Vec<f64>> for InterleavedCoordBuffer {
     }
 }
 
-impl<G: CoordTrait<T = f64>> From<Vec<G>> for InterleavedCoordBuffer {
-    fn from(other: Vec<G>) -> Self {
-        let mut_arr: MutableInterleavedCoordBuffer = other.into();
+impl<G: CoordTrait<T = f64>> From<&[G]> for InterleavedCoordBuffer {
+    fn from(other: &[G]) -> Self {
+        let mut_arr: InterleavedCoordBufferBuilder = other.into();
         mut_arr.into()
     }
 }

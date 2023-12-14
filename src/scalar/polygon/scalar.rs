@@ -6,8 +6,7 @@ use crate::array::{CoordBuffer, PolygonArray};
 use crate::geo_traits::PolygonTrait;
 use crate::scalar::polygon::iterator::PolygonInteriorIterator;
 use crate::scalar::LineString;
-use crate::trait_::GeometryScalarTrait;
-use crate::GeometryArrayTrait;
+use crate::trait_::{GeometryArraySelfMethods, GeometryScalarTrait};
 use arrow_array::OffsetSizeTrait;
 use arrow_buffer::OffsetBuffer;
 use rstar::{RTreeObject, AABB};
@@ -100,7 +99,7 @@ impl<'a, O: OffsetSizeTrait> Polygon<'a, O> {
     }
 }
 
-impl<'a, O: OffsetSizeTrait> GeometryScalarTrait<'a> for Polygon<'a, O> {
+impl<'a, O: OffsetSizeTrait> GeometryScalarTrait for Polygon<'a, O> {
     type ScalarGeo = geo::Polygon;
 
     fn to_geo(&self) -> Self::ScalarGeo {
@@ -233,13 +232,13 @@ impl<O: OffsetSizeTrait> PartialEq for Polygon<'_, O> {
 mod test {
     use crate::array::PolygonArray;
     use crate::test::polygon::{p0, p1};
-    use crate::trait_::GeoArrayAccessor;
+    use crate::trait_::GeometryArrayAccessor;
 
     /// Test Eq where the current index is true but another index is false
     #[test]
     fn test_eq_other_index_false() {
-        let arr1: PolygonArray<i32> = vec![p0(), p1()].into();
-        let arr2: PolygonArray<i32> = vec![p0(), p0()].into();
+        let arr1: PolygonArray<i32> = vec![p0(), p1()].as_slice().into();
+        let arr2: PolygonArray<i32> = vec![p0(), p0()].as_slice().into();
 
         assert_eq!(arr1.value(0), arr2.value(0));
         assert_ne!(arr1.value(1), arr2.value(1));

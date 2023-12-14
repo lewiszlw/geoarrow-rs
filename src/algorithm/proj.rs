@@ -12,7 +12,7 @@ pub trait Reproject {
 
 impl Reproject for PointArray {
     fn reproject(&self, proj: &Proj) -> Result<Self> {
-        let mut output_array = MutablePointArray::with_capacity(self.len());
+        let mut output_array = PointBuilder::with_capacity(self.len());
 
         for maybe_geom in self.iter_geo() {
             if let Some(mut geom) = maybe_geom {
@@ -29,7 +29,7 @@ impl Reproject for PointArray {
 
 #[cfg(test)]
 mod test {
-    use crate::trait_::GeoArrayAccessor;
+    use crate::trait_::GeometryArrayAccessor;
     use approx::assert_relative_eq;
 
     use super::*;

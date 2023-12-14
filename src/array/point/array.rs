@@ -4,14 +4,13 @@ use std::sync::Arc;
 use crate::algorithm::native::eq::coord_eq_allow_nan;
 use crate::array::zip_validity::ZipValidity;
 use crate::array::{
-    CoordBuffer, CoordType, InterleavedCoordBuffer, MutablePointArray, SeparatedCoordBuffer,
-    WKBArray,
+    CoordBuffer, CoordType, InterleavedCoordBuffer, PointBuilder, SeparatedCoordBuffer, WKBArray,
 };
 use crate::datatypes::GeoDataType;
 use crate::error::GeoArrowError;
 use crate::geo_traits::PointTrait;
 use crate::scalar::Point;
-use crate::trait_::{GeoArrayAccessor, IntoArrow};
+use crate::trait_::{GeometryArrayAccessor, GeometryArraySelfMethods, IntoArrow};
 use crate::util::owned_slice_validity;
 use crate::GeometryArrayTrait;
 use arrow_array::{Array, ArrayRef, FixedSizeListArray, OffsetSizeTrait, StructArray};
@@ -84,7 +83,7 @@ impl PointArray {
     }
 }
 
-impl<'a> GeometryArrayTrait<'a> for PointArray {
+impl GeometryArrayTrait for PointArray {
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }
@@ -114,17 +113,8 @@ impl<'a> GeometryArrayTrait<'a> for PointArray {
         self.into_arrow()
     }
 
-    fn with_coords(self, coords: CoordBuffer) -> Self {
-        assert_eq!(coords.len(), self.coords.len());
-        Self::new(coords, self.validity)
-    }
-
     fn coord_type(&self) -> CoordType {
         self.coords.coord_type()
-    }
-
-    fn into_coord_type(self, coord_type: CoordType) -> Self {
-        Self::new(self.coords.into_coord_type(coord_type), self.validity)
     }
 
     /// Returns the number of geometries in this array
@@ -137,6 +127,17 @@ impl<'a> GeometryArrayTrait<'a> for PointArray {
     #[inline]
     fn validity(&self) -> Option<&NullBuffer> {
         self.validity.as_ref()
+    }
+}
+
+impl GeometryArraySelfMethods for PointArray {
+    fn with_coords(self, coords: CoordBuffer) -> Self {
+        assert_eq!(coords.len(), self.coords.len());
+        Self::new(coords, self.validity)
+    }
+
+    fn into_coord_type(self, coord_type: CoordType) -> Self {
+        Self::new(self.coords.into_coord_type(coord_type), self.validity)
     }
 
     /// Slices this [`PointArray`] in place.
@@ -171,7 +172,7 @@ impl<'a> GeometryArrayTrait<'a> for PointArray {
 }
 
 // Implement geometry accessors
-impl<'a> GeoArrayAccessor<'a> for PointArray {
+impl<'a> GeometryArrayAccessor<'a> for PointArray {
     type Item = Point<'a>;
     type ItemGeo = geo::Point;
 
@@ -291,28 +292,28 @@ impl TryFrom<&dyn Array> for PointArray {
 
 impl<G: PointTrait<T = f64>> From<Vec<Option<G>>> for PointArray {
     fn from(other: Vec<Option<G>>) -> Self {
-        let mut_arr: MutablePointArray = other.into();
+        let mut_arr: PointBuilder = other.into();
         mut_arr.into()
     }
 }
 
-impl<G: PointTrait<T = f64>> From<Vec<G>> for PointArray {
-    fn from(other: Vec<G>) -> Self {
-        let mut_arr: MutablePointArray = other.into();
+impl<G: PointTrait<T = f64>> From<&[G]> for PointArray {
+    fn from(other: &[G]) -> Self {
+        let mut_arr: PointBuilder = other.into();
         mut_arr.into()
     }
 }
 
 impl<G: PointTrait<T = f64>> From<bumpalo::collections::Vec<'_, Option<G>>> for PointArray {
     fn from(other: bumpalo::collections::Vec<'_, Option<G>>) -> Self {
-        let mut_arr: MutablePointArray = other.into();
+        let mut_arr: PointBuilder = other.into();
         mut_arr.into()
     }
 }
 
 impl<G: PointTrait<T = f64>> From<bumpalo::collections::Vec<'_, G>> for PointArray {
     fn from(other: bumpalo::collections::Vec<'_, G>) -> Self {
-        let mut_arr: MutablePointArray = other.into();
+        let mut_arr: PointBuilder = other.into();
         mut_arr.into()
     }
 }
@@ -321,7 +322,7 @@ impl<O: OffsetSizeTrait> TryFrom<WKBArray<O>> for PointArray {
     type Error = GeoArrowError;
 
     fn try_from(value: WKBArray<O>) -> Result<Self, Self::Error> {
-        let mut_arr: MutablePointArray = value.try_into()?;
+        let mut_arr: PointBuilder = value.try_into()?;
         Ok(mut_arr.into())
     }
 }
@@ -329,7 +330,7 @@ impl<O: OffsetSizeTrait> TryFrom<WKBArray<O>> for PointArray {
 /// Default to an empty array
 impl Default for PointArray {
     fn default() -> Self {
-        MutablePointArray::default().into()
+        PointBuilder::default().into()
     }
 }
 
@@ -375,7 +376,7 @@ mod test {
 
     #[test]
     fn geo_roundtrip_accurate() {
-        let arr: PointArray = vec![p0(), p1(), p2()].into();
+        let arr: PointArray = vec![p0(), p1(), p2()].as_slice().into();
         assert_eq!(arr.value_as_geo(0), p0());
         assert_eq!(arr.value_as_geo(1), p1());
         assert_eq!(arr.value_as_geo(2), p2());
@@ -393,7 +394,7 @@ mod test {
     #[test]
     fn slice() {
         let points: Vec<Point> = vec![p0(), p1(), p2()];
-        let point_array: PointArray = points.into();
+        let point_array: PointArray = points.as_slice().into();
         let sliced = point_array.slice(1, 1);
         assert_eq!(sliced.len(), 1);
         assert_eq!(sliced.get_as_geo(0), Some(p1()));
@@ -402,7 +403,7 @@ mod test {
     #[test]
     fn owned_slice() {
         let points: Vec<Point> = vec![p0(), p1(), p2()];
-        let point_array: PointArray = points.into();
+        let point_array: PointArray = points.as_slice().into();
         let sliced = point_array.owned_slice(1, 1);
 
         assert_eq!(point_array.len(), 3);

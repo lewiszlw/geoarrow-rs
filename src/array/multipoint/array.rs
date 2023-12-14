@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use super::MutableMultiPointArray;
+use super::MultiPointBuilder;
 use crate::algorithm::native::eq::offset_buffer_eq;
-use crate::array::mutable_offset::OffsetsBuilder;
+use crate::array::offset_builder::OffsetsBuilder;
 use crate::array::util::{offsets_buffer_i32_to_i64, offsets_buffer_i64_to_i32, OffsetBufferUtils};
 use crate::array::zip_validity::ZipValidity;
 use crate::array::{CoordBuffer, CoordType, LineStringArray, PointArray, WKBArray};
@@ -11,7 +11,7 @@ use crate::datatypes::GeoDataType;
 use crate::error::{GeoArrowError, Result};
 use crate::geo_traits::MultiPointTrait;
 use crate::scalar::MultiPoint;
-use crate::trait_::{GeoArrayAccessor, IntoArrow};
+use crate::trait_::{GeometryArrayAccessor, GeometryArraySelfMethods, IntoArrow};
 use crate::util::{owned_slice_offsets, owned_slice_validity};
 use crate::GeometryArrayTrait;
 use arrow_array::{Array, GenericListArray, LargeListArray, ListArray, OffsetSizeTrait};
@@ -119,7 +119,7 @@ impl<O: OffsetSizeTrait> MultiPointArray<O> {
     }
 }
 
-impl<'a, O: OffsetSizeTrait> GeometryArrayTrait<'a> for MultiPointArray<O> {
+impl<O: OffsetSizeTrait> GeometryArrayTrait for MultiPointArray<O> {
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }
@@ -149,21 +149,8 @@ impl<'a, O: OffsetSizeTrait> GeometryArrayTrait<'a> for MultiPointArray<O> {
         Arc::new(self.into_arrow())
     }
 
-    fn with_coords(self, coords: CoordBuffer) -> Self {
-        assert_eq!(coords.len(), self.coords.len());
-        Self::new(coords, self.geom_offsets, self.validity)
-    }
-
     fn coord_type(&self) -> CoordType {
         self.coords.coord_type()
-    }
-
-    fn into_coord_type(self, coord_type: CoordType) -> Self {
-        Self::new(
-            self.coords.into_coord_type(coord_type),
-            self.geom_offsets,
-            self.validity,
-        )
     }
 
     /// Returns the number of geometries in this array
@@ -177,6 +164,21 @@ impl<'a, O: OffsetSizeTrait> GeometryArrayTrait<'a> for MultiPointArray<O> {
     #[inline]
     fn validity(&self) -> Option<&NullBuffer> {
         self.validity.as_ref()
+    }
+}
+
+impl<O: OffsetSizeTrait> GeometryArraySelfMethods for MultiPointArray<O> {
+    fn with_coords(self, coords: CoordBuffer) -> Self {
+        assert_eq!(coords.len(), self.coords.len());
+        Self::new(coords, self.geom_offsets, self.validity)
+    }
+
+    fn into_coord_type(self, coord_type: CoordType) -> Self {
+        Self::new(
+            self.coords.into_coord_type(coord_type),
+            self.geom_offsets,
+            self.validity,
+        )
     }
 
     /// Slices this [`MultiPointArray`] in place.
@@ -235,7 +237,7 @@ impl<'a, O: OffsetSizeTrait> GeometryArrayTrait<'a> for MultiPointArray<O> {
 }
 
 // Implement geometry accessors
-impl<'a, O: OffsetSizeTrait> GeoArrayAccessor<'a> for MultiPointArray<O> {
+impl<'a, O: OffsetSizeTrait> GeometryArrayAccessor<'a> for MultiPointArray<O> {
     type Item = MultiPoint<'a, O>;
     type ItemGeo = geo::MultiPoint;
 
@@ -356,14 +358,14 @@ impl TryFrom<&dyn Array> for MultiPointArray<i64> {
 
 impl<O: OffsetSizeTrait, G: MultiPointTrait<T = f64>> From<Vec<Option<G>>> for MultiPointArray<O> {
     fn from(other: Vec<Option<G>>) -> Self {
-        let mut_arr: MutableMultiPointArray<O> = other.into();
+        let mut_arr: MultiPointBuilder<O> = other.into();
         mut_arr.into()
     }
 }
 
-impl<O: OffsetSizeTrait, G: MultiPointTrait<T = f64>> From<Vec<G>> for MultiPointArray<O> {
-    fn from(other: Vec<G>) -> Self {
-        let mut_arr: MutableMultiPointArray<O> = other.into();
+impl<O: OffsetSizeTrait, G: MultiPointTrait<T = f64>> From<&[G]> for MultiPointArray<O> {
+    fn from(other: &[G]) -> Self {
+        let mut_arr: MultiPointBuilder<O> = other.into();
         mut_arr.into()
     }
 }
@@ -372,7 +374,7 @@ impl<O: OffsetSizeTrait, G: MultiPointTrait<T = f64>> From<bumpalo::collections:
     for MultiPointArray<O>
 {
     fn from(other: bumpalo::collections::Vec<'_, Option<G>>) -> Self {
-        let mut_arr: MutableMultiPointArray<O> = other.into();
+        let mut_arr: MultiPointBuilder<O> = other.into();
         mut_arr.into()
     }
 }
@@ -381,7 +383,7 @@ impl<O: OffsetSizeTrait, G: MultiPointTrait<T = f64>> From<bumpalo::collections:
     for MultiPointArray<O>
 {
     fn from(other: bumpalo::collections::Vec<'_, G>) -> Self {
-        let mut_arr: MutableMultiPointArray<O> = other.into();
+        let mut_arr: MultiPointBuilder<O> = other.into();
         mut_arr.into()
     }
 }
@@ -390,7 +392,7 @@ impl<O: OffsetSizeTrait> TryFrom<WKBArray<O>> for MultiPointArray<O> {
     type Error = GeoArrowError;
 
     fn try_from(value: WKBArray<O>) -> Result<Self> {
-        let mut_arr: MutableMultiPointArray<O> = value.try_into()?;
+        let mut_arr: MultiPointBuilder<O> = value.try_into()?;
         Ok(mut_arr.into())
     }
 }
@@ -447,7 +449,7 @@ impl TryFrom<MultiPointArray<i64>> for MultiPointArray<i32> {
 /// Default to an empty array
 impl<O: OffsetSizeTrait> Default for MultiPointArray<O> {
     fn default() -> Self {
-        MutableMultiPointArray::default().into()
+        MultiPointBuilder::default().into()
     }
 }
 
@@ -479,7 +481,7 @@ mod test {
 
     #[test]
     fn geo_roundtrip_accurate() {
-        let arr: MultiPointArray<i64> = vec![mp0(), mp1()].into();
+        let arr: MultiPointArray<i64> = vec![mp0(), mp1()].as_slice().into();
         assert_eq!(arr.value_as_geo(0), mp0());
         assert_eq!(arr.value_as_geo(1), mp1());
     }
@@ -494,7 +496,7 @@ mod test {
 
     #[test]
     fn slice() {
-        let arr: MultiPointArray<i64> = vec![mp0(), mp1()].into();
+        let arr: MultiPointArray<i64> = vec![mp0(), mp1()].as_slice().into();
         let sliced = arr.slice(1, 1);
         assert_eq!(sliced.len(), 1);
         assert_eq!(sliced.get_as_geo(0), Some(mp1()));
@@ -502,7 +504,7 @@ mod test {
 
     #[test]
     fn owned_slice() {
-        let arr: MultiPointArray<i64> = vec![mp0(), mp1()].into();
+        let arr: MultiPointArray<i64> = vec![mp0(), mp1()].as_slice().into();
         let sliced = arr.owned_slice(1, 1);
 
         // assert!(

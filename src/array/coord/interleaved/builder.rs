@@ -2,11 +2,11 @@ use crate::array::InterleavedCoordBuffer;
 use crate::geo_traits::CoordTrait;
 
 #[derive(Debug, Clone)]
-pub struct MutableInterleavedCoordBuffer {
+pub struct InterleavedCoordBufferBuilder {
     pub coords: Vec<f64>,
 }
 
-impl MutableInterleavedCoordBuffer {
+impl InterleavedCoordBufferBuilder {
     pub fn new() -> Self {
         Self::with_capacity(0)
     }
@@ -59,7 +59,7 @@ impl MutableInterleavedCoordBuffer {
         self.coords[i * 2 + 1] = coord.y;
     }
 
-    pub fn push_coord(&mut self, coord: impl CoordTrait<T = f64>) {
+    pub fn push_coord(&mut self, coord: &impl CoordTrait<T = f64>) {
         self.coords.push(coord.x());
         self.coords.push(coord.y());
     }
@@ -83,21 +83,21 @@ impl MutableInterleavedCoordBuffer {
     }
 }
 
-impl Default for MutableInterleavedCoordBuffer {
+impl Default for InterleavedCoordBufferBuilder {
     fn default() -> Self {
         Self::with_capacity(0)
     }
 }
 
-impl From<MutableInterleavedCoordBuffer> for InterleavedCoordBuffer {
-    fn from(value: MutableInterleavedCoordBuffer) -> Self {
+impl From<InterleavedCoordBufferBuilder> for InterleavedCoordBuffer {
+    fn from(value: InterleavedCoordBufferBuilder) -> Self {
         InterleavedCoordBuffer::new(value.coords.into())
     }
 }
 
-impl<G: CoordTrait<T = f64>> From<Vec<G>> for MutableInterleavedCoordBuffer {
-    fn from(value: Vec<G>) -> Self {
-        let mut buffer = MutableInterleavedCoordBuffer::with_capacity(value.len());
+impl<G: CoordTrait<T = f64>> From<&[G]> for InterleavedCoordBufferBuilder {
+    fn from(value: &[G]) -> Self {
+        let mut buffer = InterleavedCoordBufferBuilder::with_capacity(value.len());
         for coord in value {
             buffer.push_coord(coord);
         }

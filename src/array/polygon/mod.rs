@@ -1,11 +1,11 @@
-//! Contains the [`PolygonArray`] and [`MutablePolygonArray`] for arrays of Polygon geometries.
+//! Contains the [`PolygonArray`] and [`PolygonBuilder`] for arrays of Polygon geometries.
 
 pub use array::PolygonArray;
+pub use builder::{PolygonBuilder, PolygonCapacity};
 pub use iterator::PolygonArrayIter;
-pub use mutable::MutablePolygonArray;
 pub(crate) use util::parse_polygon;
 
 mod array;
+mod builder;
 pub(crate) mod iterator;
-mod mutable;
 pub(crate) mod util;

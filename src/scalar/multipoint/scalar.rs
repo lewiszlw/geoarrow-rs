@@ -5,9 +5,8 @@ use crate::array::{CoordBuffer, MultiPointArray};
 use crate::geo_traits::MultiPointTrait;
 use crate::scalar::multipoint::MultiPointIterator;
 use crate::scalar::Point;
-use crate::trait_::GeoArrayAccessor;
 use crate::trait_::GeometryScalarTrait;
-use crate::GeometryArrayTrait;
+use crate::trait_::{GeometryArrayAccessor, GeometryArraySelfMethods};
 use arrow_array::OffsetSizeTrait;
 use arrow_buffer::OffsetBuffer;
 use rstar::{RTreeObject, AABB};
@@ -85,7 +84,7 @@ impl<'a, O: OffsetSizeTrait> MultiPoint<'a, O> {
     }
 }
 
-impl<'a, O: OffsetSizeTrait> GeometryScalarTrait<'a> for MultiPoint<'a, O> {
+impl<'a, O: OffsetSizeTrait> GeometryScalarTrait for MultiPoint<'a, O> {
     type ScalarGeo = geo::MultiPoint;
 
     fn to_geo(&self) -> Self::ScalarGeo {
@@ -186,13 +185,13 @@ impl<O: OffsetSizeTrait> PartialEq for MultiPoint<'_, O> {
 mod test {
     use crate::array::MultiPointArray;
     use crate::test::multipoint::{mp0, mp1};
-    use crate::trait_::GeoArrayAccessor;
+    use crate::trait_::GeometryArrayAccessor;
 
     /// Test Eq where the current index is true but another index is false
     #[test]
     fn test_eq_other_index_false() {
-        let arr1: MultiPointArray<i32> = vec![mp0(), mp1()].into();
-        let arr2: MultiPointArray<i32> = vec![mp0(), mp0()].into();
+        let arr1: MultiPointArray<i32> = vec![mp0(), mp1()].as_slice().into();
+        let arr2: MultiPointArray<i32> = vec![mp0(), mp0()].as_slice().into();
 
         assert_eq!(arr1.value(0), arr2.value(0));
         assert_ne!(arr1.value(1), arr2.value(1));

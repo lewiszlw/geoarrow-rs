@@ -2,8 +2,7 @@ use crate::algorithm::native::bounding_rect::bounding_rect_point;
 use crate::algorithm::native::eq::point_eq;
 use crate::array::CoordBuffer;
 use crate::geo_traits::{CoordTrait, PointTrait};
-use crate::trait_::GeometryScalarTrait;
-use crate::GeometryArrayTrait;
+use crate::trait_::{GeometryArraySelfMethods, GeometryScalarTrait};
 use rstar::{RTreeObject, AABB};
 use std::borrow::Cow;
 
@@ -70,7 +69,7 @@ impl<'a> Point<'a> {
     }
 }
 
-impl<'a> GeometryScalarTrait<'a> for Point<'a> {
+impl<'a> GeometryScalarTrait for Point<'a> {
     type ScalarGeo = geo::Point;
 
     fn to_geo(&self) -> Self::ScalarGeo {
@@ -165,7 +164,7 @@ impl PartialEq for Point<'_> {
 #[cfg(test)]
 mod test {
     use crate::array::{CoordBuffer, PointArray};
-    use crate::trait_::GeoArrayAccessor;
+    use crate::trait_::GeometryArrayAccessor;
 
     /// Test Eq where the current index is true but another index is false
     #[test]
