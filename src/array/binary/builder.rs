@@ -179,6 +179,10 @@ impl<O: OffsetSizeTrait> WKBBuilder<O> {
         }
     }
 
+    pub fn push_null(&mut self) {
+        self.0.append_null();
+    }
+
     pub fn extend_from_iter<'a>(
         &mut self,
         geoms: impl Iterator<Item = Option<&'a (impl GeometryTrait<T = f64> + 'a)>>,
