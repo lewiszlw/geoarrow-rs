@@ -62,6 +62,7 @@ iter_geo_impl!(
     MultiPolygonBuilder<O>,
     push_multi_polygon
 );
+iter_geo_impl!(WKBArray<O>, WKBBuilder<O>, push_geometry);
 
 #[cfg(test)]
 mod test {
