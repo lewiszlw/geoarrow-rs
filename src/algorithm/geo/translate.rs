@@ -124,3 +124,25 @@ impl<O: OffsetSizeTrait> Translate for GeometryArray<O> {
         ) -> Self;
     }
 }
+
+impl<O: OffsetSizeTrait> Translate for WKBArray<O> {
+    fn translate(
+        &self,
+        x_offset: BroadcastablePrimitive<Float64Type>,
+        y_offset: BroadcastablePrimitive<Float64Type>,
+    ) -> Self {
+        let mut output_array = WKBBuilder::with_capacity(self.buffer_lengths());
+
+        self.iter_geo().zip(&x_offset).zip(&y_offset).for_each(
+            |((maybe_g, x_offset), y_offset)| {
+                output_array.push_geometry(
+                    maybe_g
+                        .map(|geom| geom.translate(x_offset.unwrap(), y_offset.unwrap()))
+                        .as_ref(),
+                )
+            },
+        );
+
+        output_array.finish()
+    }
+}
