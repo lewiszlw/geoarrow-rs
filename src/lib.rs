@@ -15,3 +15,6 @@ pub mod table;
 pub(crate) mod test;
 pub mod trait_;
 mod util;
+
+#[cfg(feature = "proj")]
+pub use proj;
