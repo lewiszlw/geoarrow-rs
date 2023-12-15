@@ -1,11 +1,13 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use crate::array::binary::WKBCapacity;
 use crate::array::util::{offsets_buffer_i32_to_i64, offsets_buffer_i64_to_i32};
 use crate::array::zip_validity::ZipValidity;
 use crate::array::{CoordType, WKBBuilder};
 use crate::datatypes::GeoDataType;
 use crate::error::{GeoArrowError, Result};
+use crate::geo_traits::GeometryTrait;
 use crate::io::wkb::from_wkb;
 use crate::io::wkb::reader::r#type::infer_geometry_type;
 use crate::scalar::WKB;
@@ -75,6 +77,13 @@ impl<O: OffsetSizeTrait> WKBArray<O> {
     // pub fn with_validity(&self, validity: Option<NullBuffer>) -> Self {
     //     WKBArray::new(self.0.clone().with_validity(validity))
     // }
+
+    pub fn buffer_lengths(&self) -> WKBCapacity {
+        WKBCapacity::new(
+            self.0.offsets().last().unwrap().to_usize().unwrap(),
+            self.len(),
+        )
+    }
 }
 
 impl<O: OffsetSizeTrait> GeometryArrayTrait for WKBArray<O> {
@@ -341,18 +350,20 @@ impl TryFrom<WKBArray<i64>> for WKBArray<i32> {
 //     }
 // }
 
-impl<O: OffsetSizeTrait> From<Vec<Option<geo::Geometry>>> for WKBArray<O> {
-    fn from(other: Vec<Option<geo::Geometry>>) -> Self {
-        let mut_arr: WKBBuilder<O> = other.into();
-        mut_arr.into()
+impl<O: OffsetSizeTrait, G: GeometryTrait<T = f64>> TryFrom<&[G]> for WKBArray<O> {
+    type Error = GeoArrowError;
+
+    fn try_from(geoms: &[G]) -> Result<Self> {
+        let mut_arr: WKBBuilder<O> = geoms.try_into()?;
+        Ok(mut_arr.into())
     }
 }
 
-impl<O: OffsetSizeTrait> From<bumpalo::collections::Vec<'_, Option<geo::Geometry>>>
-    for WKBArray<O>
-{
-    fn from(other: bumpalo::collections::Vec<'_, Option<geo::Geometry>>) -> Self {
-        let mut_arr: WKBBuilder<O> = other.into();
-        mut_arr.into()
+impl<O: OffsetSizeTrait, G: GeometryTrait<T = f64>> TryFrom<&[Option<G>]> for WKBArray<O> {
+    type Error = GeoArrowError;
+
+    fn try_from(geoms: &[Option<G>]) -> Result<Self> {
+        let mut_arr: WKBBuilder<O> = geoms.try_into()?;
+        Ok(mut_arr.into())
     }
 }
