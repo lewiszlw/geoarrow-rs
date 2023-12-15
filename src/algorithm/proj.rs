@@ -62,7 +62,23 @@ iter_geo_impl!(
     MultiPolygonBuilder<O>,
     push_multi_polygon
 );
-iter_geo_impl!(WKBArray<O>, WKBBuilder<O>, push_geometry);
+
+impl<O: OffsetSizeTrait> Reproject for WKBArray<O> {
+    fn reproject(&self, proj: &Proj) -> Result<Self> {
+        let mut output_array = WKBBuilder::with_capacity(self.buffer_lengths());
+
+        for maybe_geom in self.iter_geo() {
+            if let Some(mut geom) = maybe_geom {
+                geom.transform(proj)?;
+                output_array.push_geometry(Some(&geom));
+            } else {
+                output_array.push_null()
+            }
+        }
+
+        Ok(output_array.into())
+    }
+}
 
 #[cfg(test)]
 mod test {
