@@ -1,26 +1,29 @@
+use std::sync::Arc;
+
 use crate::array::binary::WKBCapacity;
+use crate::array::metadata::ArrayMetadata;
 use crate::error::{GeoArrowError, Result};
 use crate::geo_traits::{
-    GeometryTrait, GeometryType, LineStringTrait, MultiLineStringTrait, MultiPointTrait,
-    MultiPolygonTrait, PointTrait, PolygonTrait,
+    GeometryCollectionTrait, GeometryTrait, GeometryType, LineStringTrait, MultiLineStringTrait,
+    MultiPointTrait, MultiPolygonTrait, PointTrait, PolygonTrait,
 };
-use crate::io::wkb::writer::linestring::{line_string_wkb_size, write_line_string_as_wkb};
-use crate::io::wkb::writer::multilinestring::{
-    multi_line_string_wkb_size, write_multi_line_string_as_wkb,
+use crate::io::wkb::writer::{
+    geometry_collection_wkb_size, line_string_wkb_size, multi_line_string_wkb_size,
+    multi_point_wkb_size, multi_polygon_wkb_size, polygon_wkb_size,
+    write_geometry_collection_as_wkb, write_line_string_as_wkb, write_multi_line_string_as_wkb,
+    write_multi_point_as_wkb, write_multi_polygon_as_wkb, write_point_as_wkb, write_polygon_as_wkb,
+    POINT_WKB_SIZE,
 };
-use crate::io::wkb::writer::multipoint::{multi_point_wkb_size, write_multi_point_as_wkb};
-use crate::io::wkb::writer::multipolygon::{multi_polygon_wkb_size, write_multi_polygon_as_wkb};
-use crate::io::wkb::writer::point::{write_point_as_wkb, POINT_WKB_SIZE};
-use crate::io::wkb::writer::polygon::{polygon_wkb_size, write_polygon_as_wkb};
 use arrow_array::builder::GenericBinaryBuilder;
 use arrow_array::OffsetSizeTrait;
 
 use super::array::WKBArray;
 
-/// The Arrow equivalent to `Vec<Option<Geometry>>`.
+/// The GeoArrow equivalent to `Vec<Option<WKB>>`: a mutable collection of WKB buffers.
+///
 /// Converting a [`WKBBuilder`] into a [`WKBArray`] is `O(1)`.
 #[derive(Debug)]
-pub struct WKBBuilder<O: OffsetSizeTrait>(GenericBinaryBuilder<O>);
+pub struct WKBBuilder<O: OffsetSizeTrait>(GenericBinaryBuilder<O>, Arc<ArrayMetadata>);
 
 impl<O: OffsetSizeTrait> Default for WKBBuilder<O> {
     fn default() -> Self {
@@ -36,19 +39,37 @@ impl<O: OffsetSizeTrait> WKBBuilder<O> {
         Self::with_capacity(Default::default())
     }
 
+    pub fn new_with_options(metadata: Arc<ArrayMetadata>) -> Self {
+        Self::with_capacity_and_options(Default::default(), metadata)
+    }
+
     /// Initializes a new [`WKBBuilder`] with a pre-allocated capacity of slots and values.
     pub fn with_capacity(capacity: WKBCapacity) -> Self {
-        Self(GenericBinaryBuilder::with_capacity(
-            capacity.offsets_capacity,
-            capacity.buffer_capacity,
-        ))
+        Self::with_capacity_and_options(capacity, Default::default())
+    }
+
+    pub fn with_capacity_and_options(capacity: WKBCapacity, metadata: Arc<ArrayMetadata>) -> Self {
+        Self(
+            GenericBinaryBuilder::with_capacity(
+                capacity.offsets_capacity,
+                capacity.buffer_capacity,
+            ),
+            metadata,
+        )
     }
 
     pub fn with_capacity_from_iter<'a>(
         geoms: impl Iterator<Item = Option<&'a (impl GeometryTrait + 'a)>>,
     ) -> Self {
+        Self::with_capacity_and_options_from_iter(geoms, Default::default())
+    }
+
+    pub fn with_capacity_and_options_from_iter<'a>(
+        geoms: impl Iterator<Item = Option<&'a (impl GeometryTrait + 'a)>>,
+        metadata: Arc<ArrayMetadata>,
+    ) -> Self {
         let counter = WKBCapacity::from_geometries(geoms);
-        Self::with_capacity(counter)
+        Self::with_capacity_and_options(counter, metadata)
     }
 
     // Upstream APIs don't exist for this yet. To implement this without upstream changes, we could
@@ -56,12 +77,8 @@ impl<O: OffsetSizeTrait> WKBBuilder<O> {
     // pub fn reserve(&mut self, capacity: WKBCapacity) {
     // }
 
-    /// Push a Point onto the end of this array
-    ///
-    /// ## Performance
-    ///
-    /// It is expected to be considerably faster if you convert whole geometry arrays at a time.
-    /// E.g. using the `From` implementation from PointArray.
+    /// Push a Point onto the end of this builder
+    #[inline]
     pub fn push_point(&mut self, geom: Option<&impl PointTrait<T = f64>>) {
         if let Some(geom) = geom {
             // TODO: figure out how to write directly to the underlying vec without a copy
@@ -73,12 +90,8 @@ impl<O: OffsetSizeTrait> WKBBuilder<O> {
         }
     }
 
-    /// Push a LineString onto the end of this array
-    ///
-    /// ## Performance
-    ///
-    /// It is expected to be considerably faster if you convert whole geometry arrays at a time.
-    /// E.g. using the `From` implementation from LineStringArray.
+    /// Push a LineString onto the end of this builder
+    #[inline]
     pub fn push_line_string(&mut self, geom: Option<&impl LineStringTrait<T = f64>>) {
         if let Some(geom) = geom {
             // TODO: figure out how to write directly to the underlying vec without a copy
@@ -90,12 +103,8 @@ impl<O: OffsetSizeTrait> WKBBuilder<O> {
         }
     }
 
-    /// Push a Polygon onto the end of this array
-    ///
-    /// ## Performance
-    ///
-    /// It is expected to be considerably faster if you convert whole geometry arrays at a time.
-    /// E.g. using the `From` implementation from PolygonArray.
+    /// Push a Polygon onto the end of this builder
+    #[inline]
     pub fn push_polygon(&mut self, geom: Option<&impl PolygonTrait<T = f64>>) {
         if let Some(geom) = geom {
             // TODO: figure out how to write directly to the underlying vec without a copy
@@ -107,12 +116,8 @@ impl<O: OffsetSizeTrait> WKBBuilder<O> {
         }
     }
 
-    /// Push a MultiPoint onto the end of this array
-    ///
-    /// ## Performance
-    ///
-    /// It is expected to be considerably faster if you convert whole geometry arrays at a time.
-    /// E.g. using the `From` implementation from MultiPointArray.
+    /// Push a MultiPoint onto the end of this builder
+    #[inline]
     pub fn push_multi_point(&mut self, geom: Option<&impl MultiPointTrait<T = f64>>) {
         if let Some(geom) = geom {
             // TODO: figure out how to write directly to the underlying vec without a copy
@@ -124,12 +129,8 @@ impl<O: OffsetSizeTrait> WKBBuilder<O> {
         }
     }
 
-    /// Push a MultiLineString onto the end of this array
-    ///
-    /// ## Performance
-    ///
-    /// It is expected to be considerably faster if you convert whole geometry arrays at a time.
-    /// E.g. using the `From` implementation from MultiLineStringArray.
+    /// Push a MultiLineString onto the end of this builder
+    #[inline]
     pub fn push_multi_line_string(&mut self, geom: Option<&impl MultiLineStringTrait<T = f64>>) {
         if let Some(geom) = geom {
             // TODO: figure out how to write directly to the underlying vec without a copy
@@ -141,12 +142,8 @@ impl<O: OffsetSizeTrait> WKBBuilder<O> {
         }
     }
 
-    /// Push a MultiPolygon onto the end of this array
-    ///
-    /// ## Performance
-    ///
-    /// It is expected to be considerably faster if you convert whole geometry arrays at a time.
-    /// E.g. using the `From` implementation from MultiPolygonArray.
+    /// Push a MultiPolygon onto the end of this builder
+    #[inline]
     pub fn push_multi_polygon(&mut self, geom: Option<&impl MultiPolygonTrait<T = f64>>) {
         if let Some(geom) = geom {
             // TODO: figure out how to write directly to the underlying vec without a copy
@@ -158,7 +155,8 @@ impl<O: OffsetSizeTrait> WKBBuilder<O> {
         }
     }
 
-    /// Push a Geometry onto the end of this array
+    /// Push a Geometry onto the end of this builder
+    #[inline]
     pub fn push_geometry(&mut self, geom: Option<&impl GeometryTrait<T = f64>>) {
         if let Some(geom) = geom {
             match geom.as_type() {
@@ -172,7 +170,10 @@ impl<O: OffsetSizeTrait> WKBBuilder<O> {
                 GeometryType::MultiPolygon(multi_polygon) => {
                     self.push_multi_polygon(Some(multi_polygon))
                 }
-                _ => unimplemented!(),
+                GeometryType::GeometryCollection(geometry_collection) => {
+                    self.push_geometry_collection(Some(geometry_collection))
+                }
+                GeometryType::Rect(_) => todo!(),
             }
         } else {
             self.0.append_null()
@@ -183,6 +184,23 @@ impl<O: OffsetSizeTrait> WKBBuilder<O> {
         self.0.append_null();
     }
 
+    /// Push a GeometryCollection onto the end of this builder
+    #[inline]
+    pub fn push_geometry_collection(
+        &mut self,
+        geom: Option<&impl GeometryCollectionTrait<T = f64>>,
+    ) {
+        if let Some(geom) = geom {
+            // TODO: figure out how to write directly to the underlying vec without a copy
+            let mut buf = Vec::with_capacity(geometry_collection_wkb_size(geom));
+            write_geometry_collection_as_wkb(&mut buf, geom).unwrap();
+            self.0.append_value(&buf)
+        } else {
+            self.0.append_null()
+        }
+    }
+
+    /// Extend this builder from an iterator of Geometries.
     pub fn extend_from_iter<'a>(
         &mut self,
         geoms: impl Iterator<Item = Option<&'a (impl GeometryTrait<T = f64> + 'a)>>,
@@ -192,12 +210,14 @@ impl<O: OffsetSizeTrait> WKBBuilder<O> {
             .for_each(|maybe_geom| self.push_geometry(maybe_geom));
     }
 
+    /// Create this builder from a slice of Geometries.
     pub fn from_geometries(geoms: &[impl GeometryTrait<T = f64>]) -> Self {
         let mut array = Self::with_capacity_from_iter(geoms.iter().map(Some));
         array.extend_from_iter(geoms.iter().map(Some));
         array
     }
 
+    /// Create this builder from a slice of nullable Geometries.
     pub fn from_nullable_geometries(geoms: &[Option<impl GeometryTrait<T = f64>>]) -> Self {
         let mut array = Self::with_capacity_from_iter(geoms.iter().map(|x| x.as_ref()));
         array.extend_from_iter(geoms.iter().map(|x| x.as_ref()));
@@ -227,6 +247,6 @@ impl<O: OffsetSizeTrait, G: GeometryTrait<T = f64>> TryFrom<&[Option<G>]> for WK
 
 impl<O: OffsetSizeTrait> From<WKBBuilder<O>> for WKBArray<O> {
     fn from(other: WKBBuilder<O>) -> Self {
-        Self::new(other.0.finish_cloned())
+        Self::new(other.0.finish_cloned(), other.1)
     }
 }

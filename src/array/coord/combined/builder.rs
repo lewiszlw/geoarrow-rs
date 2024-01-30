@@ -1,6 +1,11 @@
-use crate::array::{CoordBuffer, InterleavedCoordBufferBuilder, SeparatedCoordBufferBuilder};
+use crate::array::{
+    CoordBuffer, CoordType, InterleavedCoordBufferBuilder, SeparatedCoordBufferBuilder,
+};
 use crate::geo_traits::{CoordTrait, PointTrait};
 
+/// The GeoArrow equivalent to `Vec<Coord>`: a mutable collection of coordinates.
+///
+/// Converting an [`CoordBufferBuilder`] into a [`CoordBuffer`] is `O(1)`.
 #[derive(Debug, Clone)]
 pub enum CoordBufferBuilder {
     Interleaved(InterleavedCoordBufferBuilder),
@@ -95,6 +100,13 @@ impl CoordBufferBuilder {
 
     pub fn is_empty(&self) -> bool {
         self.len() == 0
+    }
+
+    pub fn coord_type(&self) -> CoordType {
+        match self {
+            CoordBufferBuilder::Interleaved(_) => CoordType::Interleaved,
+            CoordBufferBuilder::Separated(_) => CoordType::Separated,
+        }
     }
 }
 

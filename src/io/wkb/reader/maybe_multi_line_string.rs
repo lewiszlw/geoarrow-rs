@@ -2,8 +2,6 @@ use crate::algorithm::native::eq::multi_line_string_eq;
 use crate::geo_traits::MultiLineStringTrait;
 use crate::io::wkb::reader::linestring::WKBLineString;
 use crate::io::wkb::reader::multilinestring::WKBMultiLineString;
-use std::iter::Cloned;
-use std::slice::Iter;
 
 /// An WKB object that can be either a WKBLineString or a WKBMultiLineString.
 ///
@@ -16,7 +14,7 @@ pub enum WKBMaybeMultiLineString<'a> {
 
 impl<'a> WKBMaybeMultiLineString<'a> {
     /// Check if this has equal coordinates as some other MultiLineString object
-    pub fn equals_multi_line_string(&self, other: impl MultiLineStringTrait<T = f64>) -> bool {
+    pub fn equals_multi_line_string(&self, other: &impl MultiLineStringTrait<T = f64>) -> bool {
         multi_line_string_eq(self, other)
     }
 }
@@ -24,7 +22,6 @@ impl<'a> WKBMaybeMultiLineString<'a> {
 impl<'a> MultiLineStringTrait for WKBMaybeMultiLineString<'a> {
     type T = f64;
     type ItemType<'b> = WKBLineString<'a> where Self: 'b;
-    type Iter<'b> = Cloned<Iter<'a, Self::ItemType<'a>>> where Self: 'b;
 
     fn num_lines(&self) -> usize {
         match self {
@@ -33,17 +30,10 @@ impl<'a> MultiLineStringTrait for WKBMaybeMultiLineString<'a> {
         }
     }
 
-    fn line(&self, i: usize) -> Option<Self::ItemType<'_>> {
+    unsafe fn line_unchecked(&self, i: usize) -> Self::ItemType<'_> {
         match self {
-            WKBMaybeMultiLineString::LineString(geom) => geom.line(i),
-            WKBMaybeMultiLineString::MultiLineString(geom) => geom.line(i),
-        }
-    }
-
-    fn lines(&self) -> Self::Iter<'_> {
-        match self {
-            WKBMaybeMultiLineString::LineString(geom) => geom.lines(),
-            WKBMaybeMultiLineString::MultiLineString(geom) => geom.lines(),
+            WKBMaybeMultiLineString::LineString(geom) => geom.line_unchecked(i),
+            WKBMaybeMultiLineString::MultiLineString(geom) => geom.line_unchecked(i),
         }
     }
 }
@@ -51,7 +41,6 @@ impl<'a> MultiLineStringTrait for WKBMaybeMultiLineString<'a> {
 impl<'a> MultiLineStringTrait for &'a WKBMaybeMultiLineString<'a> {
     type T = f64;
     type ItemType<'b> = WKBLineString<'a> where Self: 'b;
-    type Iter<'b> = Cloned<Iter<'a, Self::ItemType<'a>>> where Self: 'b;
 
     fn num_lines(&self) -> usize {
         match self {
@@ -60,17 +49,10 @@ impl<'a> MultiLineStringTrait for &'a WKBMaybeMultiLineString<'a> {
         }
     }
 
-    fn line(&self, i: usize) -> Option<Self::ItemType<'_>> {
+    unsafe fn line_unchecked(&self, i: usize) -> Self::ItemType<'_> {
         match self {
-            WKBMaybeMultiLineString::LineString(geom) => geom.line(i),
-            WKBMaybeMultiLineString::MultiLineString(geom) => geom.line(i),
-        }
-    }
-
-    fn lines(&self) -> Self::Iter<'_> {
-        match self {
-            WKBMaybeMultiLineString::LineString(geom) => geom.lines(),
-            WKBMaybeMultiLineString::MultiLineString(geom) => geom.lines(),
+            WKBMaybeMultiLineString::LineString(geom) => geom.line_unchecked(i),
+            WKBMaybeMultiLineString::MultiLineString(geom) => geom.line_unchecked(i),
         }
     }
 }
@@ -95,7 +77,7 @@ mod test {
             0,
         ));
 
-        assert!(wkb_geom.equals_multi_line_string(geo::MultiLineString(vec![geom])));
+        assert!(wkb_geom.equals_multi_line_string(&geo::MultiLineString(vec![geom])));
     }
 
     #[test]
@@ -109,6 +91,6 @@ mod test {
             Endianness::LittleEndian,
         ));
 
-        assert!(wkb_geom.equals_multi_line_string(geom));
+        assert!(wkb_geom.equals_multi_line_string(&geom));
     }
 }

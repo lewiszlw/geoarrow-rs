@@ -1,11 +1,11 @@
 [package]
 name = "geoarrow-wasm"
-version = "0.1.0"
+version = "0.2.0-beta.2"
 authors = ["Kyle Barron <kylebarron2@gmail.com>"]
 edition = "2021"
 description = "Efficient, vectorized geospatial operations in WebAssembly."
 readme = "README.md"
-repository = "https://github.com/kylebarron/geoarrow-rs"
+repository = "https://github.com/geoarrow/geoarrow-rs"
 license = "MIT OR Apache-2.0"
 keywords = ["webassembly", "arrow", "geospatial"]
 categories = ["wasm", "science::geo"]
@@ -18,18 +18,39 @@ crate-type = ["cdylib", "rlib"]
 # It appears that adding console_error_panic_hook only adds 4kb of size (before gzipping) so for now
 # to make debugging easier we'll include it as a default feature
 default = ["console_error_panic_hook"]
+
+# Include algorithms on geometry arrays
+algorithm = []
+# Include Data classes for contiguous GeoArrow memory (PointData, etc)
+data = []
+
 geodesy = ["dep:geodesy", "geoarrow/geodesy"]
 debug = ["console_error_panic_hook"]
-# flatgeobuf = ["geoarrow/flatgeobuf", "geoarrow/geozero"]
-# parquet = ["geoarrow/parquet"]
+io_geojson = ["geoarrow/geozero", "table"]
+io_flatgeobuf = ["geoarrow/flatgeobuf", "table"]
+io_parquet = ["geoarrow/parquet", "table", "dep:bytes", "dep:parquet"]
+io_parquet_compressions = [
+    "io_parquet",
+    "io_parquet_brotli",
+    "io_parquet_gzip",
+    "io_parquet_snappy",
+    "io_parquet_zstd",
+    "io_parquet_lz4",
+]
+io_parquet_brotli = ["io_parquet", "parquet/brotli"]
+io_parquet_gzip = ["io_parquet", "parquet/flate2"]
+io_parquet_snappy = ["io_parquet", "parquet/snap"]
+io_parquet_zstd = ["io_parquet", "parquet/zstd", "dep:zstd"]
+io_parquet_lz4 = ["io_parquet", "parquet/lz4"]
 
-# brotli = ["parquet2?/brotli"]
-# gzip = ["parquet2?/gzip"]
-# snappy = ["parquet2?/snappy"]
-# zstd = ["parquet2?/zstd", "dep:zstd"]
-# lz4 = ["parquet2?/lz4_flex"]
+# Include scalar classes
+scalar = []
 
-# all_compressions = ["brotli", "gzip", "snappy", "zstd", "lz4"]
+# Include GeoTable class
+table = []
+
+# Include vector classes for chunked GeoArrow memory (PointVector, etc)
+vector = []
 
 [dependencies]
 wasm-bindgen = "0.2.63"
@@ -38,17 +59,22 @@ wasm-bindgen = "0.2.63"
 # logging them with `console.error`. This is great for development, but requires
 # all the `std::fmt` and `std::panicking` infrastructure, so isn't great for
 # code size when deploying.
-arrow-array = { git = "https://github.com/apache/arrow-rs", rev="fbbb61d94282165f9bb9f73fb4d00a3af16d4aee" }
-arrow-buffer = { git = "https://github.com/apache/arrow-rs", rev="fbbb61d94282165f9bb9f73fb4d00a3af16d4aee" }
-arrow-wasm = { git = "https://github.com/kylebarron/arrow-wasm", rev = "40363b64fc8bbb8c4a2fb8a30156f8811182dada", features = [
+arrow-array = "50"
+arrow-buffer = "50"
+arrow-wasm = { git = "https://github.com/kylebarron/arrow-wasm", rev = "38aa646f6bf0ec7fe3eacc0d9e47671ac82de7b5", features = [
     "arrow1",
 ] }
+bytes = { version = "1", optional = true }
 console_error_panic_hook = { version = "0.1.6", optional = true }
 
-geoarrow = { path = "../" }
-thiserror = "1"
 geo = "0.27"
-geodesy = { version = "0.11", optional = true, features = ["js"] }
+geoarrow = { path = "../" }
+geodesy = { version = "0.12", optional = true, features = ["js"] }
+parquet = { version = "50", optional = true, features = [
+    "arrow",
+    "base64",
+] }
+thiserror = "1"
 
 # Pass "wasm" and "thin" down to the transitive zstd dependency
 zstd = { version = "*", features = [

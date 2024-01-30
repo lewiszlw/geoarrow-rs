@@ -1,16 +1,15 @@
+use crate::io::geo::geometry_to_geo;
 use crate::trait_::GeometryScalarTrait;
 use arrow_array::{GenericBinaryArray, OffsetSizeTrait};
 use geo::BoundingRect;
-#[cfg(feature = "geozero")]
-use geozero::ToGeo;
 use rstar::{RTreeObject, AABB};
 use std::borrow::Cow;
 
 /// An Arrow equivalent of a Point
 #[derive(Debug, Clone)]
 pub struct WKB<'a, O: OffsetSizeTrait> {
-    pub arr: Cow<'a, GenericBinaryArray<O>>,
-    pub geom_index: usize,
+    pub(crate) arr: Cow<'a, GenericBinaryArray<O>>,
+    pub(crate) geom_index: usize,
 }
 
 impl<'a, O: OffsetSizeTrait> WKB<'a, O> {
@@ -31,6 +30,12 @@ impl<'a, O: OffsetSizeTrait> WKB<'a, O> {
             geom_index,
         }
     }
+
+    pub fn into_owned_inner(self) -> (GenericBinaryArray<O>, usize) {
+        // TODO: hard slice?
+        // let owned = self.into_owned();
+        (self.arr.into_owned(), self.geom_index)
+    }
 }
 
 impl<'a, O: OffsetSizeTrait> GeometryScalarTrait for WKB<'a, O> {
@@ -38,6 +43,11 @@ impl<'a, O: OffsetSizeTrait> GeometryScalarTrait for WKB<'a, O> {
 
     fn to_geo(&self) -> Self::ScalarGeo {
         self.into()
+    }
+
+    #[cfg(feature = "geos")]
+    fn to_geos(&self) -> std::result::Result<geos::Geometry, geos::Error> {
+        self.try_into()
     }
 }
 
@@ -47,7 +57,12 @@ impl<'a, O: OffsetSizeTrait> AsRef<[u8]> for WKB<'a, O> {
     }
 }
 
-#[cfg(feature = "geozero")]
+impl<O: OffsetSizeTrait> From<&WKB<'_, O>> for geo::Geometry {
+    fn from(value: &WKB<'_, O>) -> Self {
+        geometry_to_geo(&value.to_wkb_object())
+    }
+}
+
 impl<O: OffsetSizeTrait> From<WKB<'_, O>> for geo::Geometry {
     fn from(value: WKB<'_, O>) -> Self {
         (&value).into()

@@ -1,6 +1,14 @@
+use std::ops::{Add, AddAssign};
+
+use arrow_array::OffsetSizeTrait;
+
 use crate::array::linestring::LineStringCapacity;
 use crate::geo_traits::{LineStringTrait, MultiLineStringTrait};
 
+/// A counter for the buffer sizes of a
+/// [`MultiLineStringArray`][crate::array::MultiLineStringArray].
+///
+/// This can be used to reduce allocations by allocating once for exactly the array size you need.
 #[derive(Debug, Clone, Copy)]
 pub struct MultiLineStringCapacity {
     pub(crate) coord_capacity: usize,
@@ -9,6 +17,7 @@ pub struct MultiLineStringCapacity {
 }
 
 impl MultiLineStringCapacity {
+    /// Create a new capacity with known sizes.
     pub fn new(coord_capacity: usize, ring_capacity: usize, geom_capacity: usize) -> Self {
         Self {
             coord_capacity,
@@ -17,10 +26,12 @@ impl MultiLineStringCapacity {
         }
     }
 
+    /// Create a new empty capacity.
     pub fn new_empty() -> Self {
         Self::new(0, 0, 0)
     }
 
+    /// Return `true` if the capacity is empty.
     pub fn is_empty(&self) -> bool {
         self.coord_capacity == 0 && self.ring_capacity == 0 && self.geom_capacity == 0
     }
@@ -37,10 +48,8 @@ impl MultiLineStringCapacity {
         self.geom_capacity
     }
 
-    pub fn add_line_string<'a>(
-        &mut self,
-        maybe_line_string: Option<&'a (impl LineStringTrait + 'a)>,
-    ) {
+    #[inline]
+    pub fn add_line_string(&mut self, maybe_line_string: Option<&impl LineStringTrait>) {
         self.geom_capacity += 1;
         if let Some(line_string) = maybe_line_string {
             // A single line string
@@ -49,18 +58,15 @@ impl MultiLineStringCapacity {
         }
     }
 
-    pub fn add_multi_line_string<'a>(
-        &mut self,
-        multi_line_string: Option<&'a (impl MultiLineStringTrait + 'a)>,
-    ) {
+    #[inline]
+    pub fn add_multi_line_string(&mut self, multi_line_string: Option<&impl MultiLineStringTrait>) {
         self.geom_capacity += 1;
         if let Some(multi_line_string) = multi_line_string {
             // Total number of rings in this polygon
             let num_line_strings = multi_line_string.num_lines();
             self.ring_capacity += num_line_strings;
 
-            for line_string_idx in 0..num_line_strings {
-                let line_string = multi_line_string.line(line_string_idx).unwrap();
+            for line_string in multi_line_string.lines() {
                 self.coord_capacity += line_string.num_coords();
             }
         }
@@ -81,10 +87,44 @@ impl MultiLineStringCapacity {
         }
         counter
     }
+
+    /// The number of bytes an array with this capacity would occupy.
+    pub fn num_bytes<O: OffsetSizeTrait>(&self) -> usize {
+        let offsets_byte_width = if O::IS_LARGE { 8 } else { 4 };
+        let num_offsets = self.geom_capacity + self.ring_capacity;
+        (offsets_byte_width * num_offsets) + (self.coord_capacity * 2 * 8)
+    }
 }
 
 impl Default for MultiLineStringCapacity {
     fn default() -> Self {
         Self::new_empty()
+    }
+}
+
+impl Add for MultiLineStringCapacity {
+    type Output = Self;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        let coord_capacity = self.coord_capacity + rhs.coord_capacity;
+        let ring_capacity = self.ring_capacity + rhs.ring_capacity;
+        let geom_capacity = self.geom_capacity + rhs.geom_capacity;
+        Self::new(coord_capacity, ring_capacity, geom_capacity)
+    }
+}
+
+impl AddAssign for MultiLineStringCapacity {
+    fn add_assign(&mut self, rhs: Self) {
+        self.coord_capacity += rhs.coord_capacity;
+        self.ring_capacity += rhs.ring_capacity;
+        self.geom_capacity += rhs.geom_capacity;
+    }
+}
+
+impl AddAssign<LineStringCapacity> for MultiLineStringCapacity {
+    fn add_assign(&mut self, rhs: LineStringCapacity) {
+        self.coord_capacity += rhs.coord_capacity();
+        self.ring_capacity += rhs.geom_capacity();
+        self.geom_capacity += rhs.geom_capacity();
     }
 }

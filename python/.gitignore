@@ -1,3 +1,8 @@
+tmp*.py
+tmp*.ts
+tmp*.js
+*.zip
+site
 /target
 
 # Byte-compiled / optimized / DLL files

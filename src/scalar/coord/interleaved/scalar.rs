@@ -3,13 +3,14 @@ use rstar::{RTreeObject, AABB};
 
 use crate::algorithm::native::eq::coord_eq;
 use crate::geo_traits::CoordTrait;
+use crate::io::geo::coord_to_geo;
 use crate::scalar::SeparatedCoord;
 use crate::trait_::GeometryScalarTrait;
 
 #[derive(Debug, Clone)]
 pub struct InterleavedCoord<'a> {
-    pub coords: &'a ScalarBuffer<f64>,
-    pub i: usize,
+    pub(crate) coords: &'a ScalarBuffer<f64>,
+    pub(crate) i: usize,
 }
 
 impl<'a> GeometryScalarTrait for InterleavedCoord<'a> {
@@ -17,6 +18,12 @@ impl<'a> GeometryScalarTrait for InterleavedCoord<'a> {
 
     fn to_geo(&self) -> Self::ScalarGeo {
         self.into()
+    }
+
+    #[cfg(feature = "geos")]
+    fn to_geos(&self) -> std::result::Result<geos::Geometry, geos::Error> {
+        todo!()
+        // self.try_into()
     }
 }
 
@@ -28,10 +35,7 @@ impl From<InterleavedCoord<'_>> for geo::Coord {
 
 impl From<&InterleavedCoord<'_>> for geo::Coord {
     fn from(value: &InterleavedCoord) -> Self {
-        geo::Coord {
-            x: value.x(),
-            y: value.y(),
-        }
+        coord_to_geo(value)
     }
 }
 

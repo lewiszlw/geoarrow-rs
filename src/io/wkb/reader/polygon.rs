@@ -1,6 +1,4 @@
 use std::io::Cursor;
-use std::iter::Cloned;
-use std::slice::Iter;
 
 use byteorder::{BigEndian, LittleEndian, ReadBytesExt};
 
@@ -72,7 +70,7 @@ impl<'a> WKBPolygon<'a> {
     }
 
     /// Check if this WKBPolygon has equal coordinates as some other Polygon object
-    pub fn equals_polygon(&self, other: impl PolygonTrait<T = f64>) -> bool {
+    pub fn equals_polygon(&self, other: &impl PolygonTrait<T = f64>) -> bool {
         polygon_eq(self, other)
     }
 }
@@ -80,7 +78,6 @@ impl<'a> WKBPolygon<'a> {
 impl<'a> PolygonTrait for WKBPolygon<'a> {
     type T = f64;
     type ItemType<'b> = WKBLinearRing<'a>where Self: 'b;
-    type Iter<'b> = Cloned<Iter<'a, Self::ItemType<'a>>>where Self: 'b;
 
     fn num_interiors(&self) -> usize {
         // Support an empty polygon with no rings
@@ -99,23 +96,14 @@ impl<'a> PolygonTrait for WKBPolygon<'a> {
         }
     }
 
-    fn interior(&self, i: usize) -> Option<Self::ItemType<'_>> {
-        if i > self.num_interiors() {
-            return None;
-        }
-
-        Some(self.wkb_linear_rings[i + 1])
-    }
-
-    fn interiors(&self) -> Self::Iter<'_> {
-        todo!()
+    unsafe fn interior_unchecked(&self, i: usize) -> Self::ItemType<'_> {
+        *self.wkb_linear_rings.get_unchecked(i + 1)
     }
 }
 
 impl<'a> PolygonTrait for &'a WKBPolygon<'a> {
     type T = f64;
     type ItemType<'b> = WKBLinearRing<'a> where Self: 'b;
-    type Iter<'b> = Cloned<Iter<'a, Self::ItemType<'a>>> where Self: 'b;
 
     fn num_interiors(&self) -> usize {
         // Support an empty polygon with no rings
@@ -134,62 +122,36 @@ impl<'a> PolygonTrait for &'a WKBPolygon<'a> {
         }
     }
 
-    fn interior(&self, i: usize) -> Option<Self::ItemType<'_>> {
-        if i > self.num_interiors() {
-            return None;
-        }
-
-        Some(self.wkb_linear_rings[i + 1])
-    }
-
-    fn interiors(&self) -> Self::Iter<'_> {
-        todo!()
+    unsafe fn interior_unchecked(&self, i: usize) -> Self::ItemType<'_> {
+        *self.wkb_linear_rings.get_unchecked(i + 1)
     }
 }
 
 impl<'a> MultiPolygonTrait for WKBPolygon<'a> {
     type T = f64;
     type ItemType<'b> = WKBPolygon<'a> where Self: 'b;
-    type Iter<'b> = Cloned<Iter<'a, Self::ItemType<'a>>> where Self: 'b;
 
     fn num_polygons(&self) -> usize {
         1
     }
 
-    fn polygon(&self, i: usize) -> Option<Self::ItemType<'_>> {
-        if i > self.num_polygons() {
-            return None;
-        }
-
-        Some(self.clone())
-    }
-
-    fn polygons(&self) -> Self::Iter<'_> {
-        todo!()
+    unsafe fn polygon_unchecked(&self, _i: usize) -> Self::ItemType<'_> {
+        self.clone()
     }
 }
 
 impl<'a> MultiPolygonTrait for &'a WKBPolygon<'a> {
     type T = f64;
     type ItemType<'b> = WKBPolygon<'a> where Self: 'b;
-    type Iter<'b> = Cloned<Iter<'a, Self::ItemType<'a>>> where Self: 'b;
 
     fn num_polygons(&self) -> usize {
         1
     }
 
-    fn polygon(&self, i: usize) -> Option<Self::ItemType<'_>> {
-        if i > self.num_polygons() {
-            return None;
-        }
-
+    unsafe fn polygon_unchecked(&self, _i: usize) -> Self::ItemType<'_> {
         // TODO: this looks bad
         #[allow(suspicious_double_ref_op)]
-        Some(self.clone().clone())
-    }
-
-    fn polygons(&self) -> Self::Iter<'_> {
-        todo!()
+        self.clone().clone()
     }
 }
 
@@ -207,6 +169,6 @@ mod test {
             .unwrap();
         let wkb_geom = WKBPolygon::new(&buf, Endianness::LittleEndian, 0);
 
-        assert!(wkb_geom.equals_polygon(geom));
+        assert!(wkb_geom.equals_polygon(&geom));
     }
 }

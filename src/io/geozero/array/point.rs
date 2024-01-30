@@ -1,5 +1,5 @@
 use crate::array::{PointArray, PointBuilder};
-use crate::io::geozero::scalar::point::process_point;
+use crate::io::geozero::scalar::process_point;
 use crate::trait_::GeometryArrayAccessor;
 use crate::GeometryArrayTrait;
 use geozero::{GeomProcessor, GeozeroGeometry};
@@ -27,15 +27,15 @@ pub trait ToPointArray {
     fn to_point_array(&self) -> geozero::error::Result<PointArray>;
 
     /// Convert to a GeoArrow PointBuilder
-    fn to_mutable_point_array(&self) -> geozero::error::Result<PointBuilder>;
+    fn to_point_builder(&self) -> geozero::error::Result<PointBuilder>;
 }
 
 impl<T: GeozeroGeometry> ToPointArray for T {
     fn to_point_array(&self) -> geozero::error::Result<PointArray> {
-        Ok(self.to_mutable_point_array()?.into())
+        Ok(self.to_point_builder()?.into())
     }
 
-    fn to_mutable_point_array(&self) -> geozero::error::Result<PointBuilder> {
+    fn to_point_builder(&self) -> geozero::error::Result<PointBuilder> {
         let mut mutable_point_array = PointBuilder::new();
         self.process_geom(&mut mutable_point_array)?;
         Ok(mutable_point_array)

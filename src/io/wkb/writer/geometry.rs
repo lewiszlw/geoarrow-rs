@@ -4,14 +4,13 @@ use crate::array::offset_builder::OffsetsBuilder;
 use crate::array::{MixedGeometryArray, WKBArray};
 use crate::error::Result;
 use crate::geo_traits::{GeometryTrait, GeometryType};
-use crate::io::wkb::writer::linestring::{line_string_wkb_size, write_line_string_as_wkb};
-use crate::io::wkb::writer::multilinestring::{
-    multi_line_string_wkb_size, write_multi_line_string_as_wkb,
+use crate::io::wkb::writer::{
+    geometry_collection_wkb_size, line_string_wkb_size, multi_line_string_wkb_size,
+    multi_point_wkb_size, multi_polygon_wkb_size, polygon_wkb_size, write_line_string_as_wkb,
+    write_multi_line_string_as_wkb, write_multi_point_as_wkb, write_multi_polygon_as_wkb,
+    write_point_as_wkb, write_polygon_as_wkb, POINT_WKB_SIZE,
 };
-use crate::io::wkb::writer::multipoint::{multi_point_wkb_size, write_multi_point_as_wkb};
-use crate::io::wkb::writer::multipolygon::{multi_polygon_wkb_size, write_multi_polygon_as_wkb};
-use crate::io::wkb::writer::point::{write_point_as_wkb, POINT_WKB_SIZE};
-use crate::io::wkb::writer::polygon::{polygon_wkb_size, write_polygon_as_wkb};
+use crate::trait_::GeometryArrayAccessor;
 use crate::trait_::GeometryArrayTrait;
 use std::io::{Cursor, Write};
 
@@ -25,7 +24,8 @@ pub fn geometry_wkb_size(geom: &impl GeometryTrait) -> usize {
         MultiPoint(mp) => multi_point_wkb_size(mp),
         MultiLineString(ml) => multi_line_string_wkb_size(ml),
         MultiPolygon(mp) => multi_polygon_wkb_size(mp),
-        _ => todo!(),
+        GeometryCollection(gc) => geometry_collection_wkb_size(gc),
+        Rect(_) => todo!(),
     }
 }
 
@@ -42,7 +42,14 @@ pub fn write_geometry_as_wkb<W: Write>(
         MultiPoint(mp) => write_multi_point_as_wkb(writer, mp),
         MultiLineString(ml) => write_multi_line_string_as_wkb(writer, ml),
         MultiPolygon(mp) => write_multi_polygon_as_wkb(writer, mp),
-        _ => todo!(),
+        GeometryCollection(_gc) => {
+            todo!()
+            // error[E0275]: overflow evaluating the requirement `&mut std::io::Cursor<std::vec::Vec<u8>>: std::io::Write`
+            // https://stackoverflow.com/a/31197781/7319250
+            // write_geometry_collection_as_wkb(writer, gc)
+        }
+        Rect(_) => todo!(),
+        // _ => todo!(),
     }
 }
 
@@ -72,7 +79,7 @@ impl<A: OffsetSizeTrait, B: OffsetSizeTrait> From<&MixedGeometryArray<A>> for WK
 
         let binary_arr =
             GenericBinaryArray::new(offsets.into(), values.into(), value.nulls().cloned());
-        WKBArray::new(binary_arr)
+        WKBArray::new(binary_arr, value.metadata())
     }
 }
 

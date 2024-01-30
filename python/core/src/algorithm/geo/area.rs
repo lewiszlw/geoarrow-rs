@@ -1,111 +1,56 @@
 use crate::array::*;
-use crate::ffi::from_python::{convert_to_geometry_array, import_arrow_c_array};
+use crate::chunked_array::*;
+use crate::error::PyGeoArrowResult;
+use crate::ffi::from_python::import_arrow_c_array;
 use geoarrow::algorithm::geo::Area;
-use geoarrow::datatypes::GeoDataType;
-use pyo3::exceptions::PyTypeError;
+use geoarrow::array::from_arrow_array;
 use pyo3::prelude::*;
 
+/// Unsigned planar area of a geometry array
+///
+/// Args:
+///     input: input geometry array
+///
+/// Returns:
+///     Array with area values.
 #[pyfunction]
-pub fn area(ob: &PyAny) -> PyResult<Float64Array> {
-    let (array, field) = import_arrow_c_array(ob)?;
-    // TODO: need to improve crate's error handling
-    let array = convert_to_geometry_array(&array, &field).unwrap();
+pub fn area(input: &PyAny) -> PyGeoArrowResult<Float64Array> {
+    let (array, field) = import_arrow_c_array(input)?;
+    let array = from_arrow_array(&array, &field)?;
+    Ok(array.as_ref().unsigned_area()?.into())
+}
 
-    match array.data_type() {
-        GeoDataType::Point(_) => {
-            let geo_arr = array
-                .as_any()
-                .downcast_ref::<geoarrow::array::PointArray>()
-                .unwrap();
-            Ok(geo_arr.unsigned_area().into())
-        }
-        GeoDataType::LineString(_) => {
-            let geo_arr = array
-                .as_any()
-                .downcast_ref::<geoarrow::array::LineStringArray<i32>>()
-                .unwrap();
-            Ok(geo_arr.unsigned_area().into())
-        }
-        GeoDataType::LargeLineString(_) => {
-            let geo_arr = array
-                .as_any()
-                .downcast_ref::<geoarrow::array::LineStringArray<i64>>()
-                .unwrap();
-            Ok(geo_arr.unsigned_area().into())
-        }
-        GeoDataType::Polygon(_) => {
-            let geo_arr = array
-                .as_any()
-                .downcast_ref::<geoarrow::array::PolygonArray<i32>>()
-                .unwrap();
-            Ok(geo_arr.unsigned_area().into())
-        }
-        GeoDataType::LargePolygon(_) => {
-            let geo_arr = array
-                .as_any()
-                .downcast_ref::<geoarrow::array::PolygonArray<i64>>()
-                .unwrap();
-            Ok(geo_arr.unsigned_area().into())
-        }
-        GeoDataType::MultiPoint(_) => {
-            let geo_arr = array
-                .as_any()
-                .downcast_ref::<geoarrow::array::MultiPointArray<i32>>()
-                .unwrap();
-            Ok(geo_arr.unsigned_area().into())
-        }
-        GeoDataType::LargeMultiPoint(_) => {
-            let geo_arr = array
-                .as_any()
-                .downcast_ref::<geoarrow::array::MultiPointArray<i64>>()
-                .unwrap();
-            Ok(geo_arr.unsigned_area().into())
-        }
-        GeoDataType::MultiLineString(_) => {
-            let geo_arr = array
-                .as_any()
-                .downcast_ref::<geoarrow::array::MultiLineStringArray<i32>>()
-                .unwrap();
-            Ok(geo_arr.unsigned_area().into())
-        }
-        GeoDataType::LargeMultiLineString(_) => {
-            let geo_arr = array
-                .as_any()
-                .downcast_ref::<geoarrow::array::MultiLineStringArray<i64>>()
-                .unwrap();
-            Ok(geo_arr.unsigned_area().into())
-        }
-        GeoDataType::MultiPolygon(_) => {
-            let geo_arr = array
-                .as_any()
-                .downcast_ref::<geoarrow::array::MultiPolygonArray<i32>>()
-                .unwrap();
-            Ok(geo_arr.unsigned_area().into())
-        }
-        GeoDataType::LargeMultiPolygon(_) => {
-            let geo_arr = array
-                .as_any()
-                .downcast_ref::<geoarrow::array::MultiPolygonArray<i64>>()
-                .unwrap();
-            Ok(geo_arr.unsigned_area().into())
-        }
-        _ => Err(PyTypeError::new_err("Unexpected geometry type")),
-    }
+/// Signed planar area of a geometry array
+///
+/// Args:
+///     input: input geometry array
+///
+/// Returns:
+///     Array with area values.
+#[pyfunction]
+pub fn signed_area(input: &PyAny) -> PyGeoArrowResult<Float64Array> {
+    let (array, field) = import_arrow_c_array(input)?;
+    let array = from_arrow_array(&array, &field)?;
+    Ok(array.as_ref().signed_area()?.into())
 }
 
 macro_rules! impl_area {
     ($struct_name:ident) => {
         #[pymethods]
         impl $struct_name {
-            /// Unsigned planar area of a geometry.
+            /// Unsigned planar area of a geometry array
+            ///
+            /// Returns:
+            ///     Array with area values.
             pub fn area(&self) -> Float64Array {
-                use geoarrow::algorithm::geo::Area;
                 Area::unsigned_area(&self.0).into()
             }
 
-            /// Signed planar area of a geometry.
+            /// Signed planar area of a geometry array
+            ///
+            /// Returns:
+            ///     Array with area values.
             pub fn signed_area(&self) -> Float64Array {
-                use geoarrow::algorithm::geo::Area;
                 Area::signed_area(&self.0).into()
             }
         }
@@ -118,4 +63,37 @@ impl_area!(PolygonArray);
 impl_area!(MultiPointArray);
 impl_area!(MultiLineStringArray);
 impl_area!(MultiPolygonArray);
-// impl_area!(GeometryArray);
+impl_area!(MixedGeometryArray);
+impl_area!(GeometryCollectionArray);
+
+macro_rules! impl_chunked {
+    ($struct_name:ident) => {
+        #[pymethods]
+        impl $struct_name {
+            /// Unsigned planar area of a geometry array
+            ///
+            /// Returns:
+            ///     Chunked array with area values.
+            pub fn area(&self) -> PyGeoArrowResult<ChunkedFloat64Array> {
+                Ok(Area::unsigned_area(&self.0)?.into())
+            }
+
+            /// Signed planar area of a geometry array
+            ///
+            /// Returns:
+            ///     Chunked array with area values.
+            pub fn signed_area(&self) -> PyGeoArrowResult<ChunkedFloat64Array> {
+                Ok(Area::signed_area(&self.0)?.into())
+            }
+        }
+    };
+}
+
+impl_chunked!(ChunkedPointArray);
+impl_chunked!(ChunkedLineStringArray);
+impl_chunked!(ChunkedPolygonArray);
+impl_chunked!(ChunkedMultiPointArray);
+impl_chunked!(ChunkedMultiLineStringArray);
+impl_chunked!(ChunkedMultiPolygonArray);
+impl_chunked!(ChunkedMixedGeometryArray);
+impl_chunked!(ChunkedGeometryCollectionArray);

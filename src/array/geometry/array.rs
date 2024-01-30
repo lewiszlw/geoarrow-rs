@@ -1,3 +1,5 @@
+#![allow(deprecated)]
+
 use std::sync::Arc;
 
 use arrow_array::{Array, OffsetSizeTrait};
@@ -21,7 +23,7 @@ use crate::GeometryArrayTrait;
 /// Notably this does _not_ include [`WKBArray`] as a variant, because that is not zero-copy to
 /// parse.
 #[derive(Debug, Clone)]
-// #[derive(Debug, Clone, PartialEq)]
+#[deprecated = "Use Arc<dyn GeometryArrayTrait> instead."]
 pub enum GeometryArray<O: OffsetSizeTrait> {
     Point(PointArray),
     LineString(LineStringArray<O>),
@@ -83,6 +85,10 @@ impl<O: OffsetSizeTrait> GeometryArrayTrait for GeometryArray<O> {
         }
     }
 
+    fn metadata(&self) -> Arc<crate::array::metadata::ArrayMetadata> {
+        todo!()
+    }
+
     fn extension_name(&self) -> &str {
         match self {
             GeometryArray::Point(arr) => arr.extension_name(),
@@ -105,6 +111,10 @@ impl<O: OffsetSizeTrait> GeometryArrayTrait for GeometryArray<O> {
             GeometryArray::MultiPolygon(arr) => arr.into_array_ref(),
             GeometryArray::Rect(arr) => arr.into_array_ref(),
         }
+    }
+
+    fn to_array_ref(&self) -> arrow_array::ArrayRef {
+        self.clone().into_array_ref()
     }
 
     fn coord_type(&self) -> crate::array::CoordType {
@@ -146,6 +156,10 @@ impl<O: OffsetSizeTrait> GeometryArrayTrait for GeometryArray<O> {
             GeometryArray::MultiPolygon(arr) => arr.nulls(),
             GeometryArray::Rect(arr) => arr.nulls(),
         }
+    }
+
+    fn as_ref(&self) -> &dyn GeometryArrayTrait {
+        self
     }
 
     // /// Clones this [`GeometryArray`] with a new assigned bitmap.

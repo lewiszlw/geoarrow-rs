@@ -14,8 +14,8 @@ use crate::GeometryArrayTrait;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SeparatedCoordBuffer {
-    pub x: ScalarBuffer<f64>,
-    pub y: ScalarBuffer<f64>,
+    pub(crate) x: ScalarBuffer<f64>,
+    pub(crate) y: ScalarBuffer<f64>,
 }
 
 fn check(x: &ScalarBuffer<f64>, y: &ScalarBuffer<f64>) -> Result<()> {
@@ -89,8 +89,16 @@ impl GeometryArrayTrait for SeparatedCoordBuffer {
         Arc::new(self.into_arrow())
     }
 
+    fn to_array_ref(&self) -> arrow_array::ArrayRef {
+        self.clone().into_array_ref()
+    }
+
     fn coord_type(&self) -> CoordType {
         CoordType::Separated
+    }
+
+    fn metadata(&self) -> Arc<crate::array::metadata::ArrayMetadata> {
+        panic!()
     }
 
     fn len(&self) -> usize {
@@ -99,6 +107,10 @@ impl GeometryArrayTrait for SeparatedCoordBuffer {
 
     fn validity(&self) -> Option<&NullBuffer> {
         panic!("coordinate arrays don't have their own validity arrays")
+    }
+
+    fn as_ref(&self) -> &dyn GeometryArrayTrait {
+        self
     }
 }
 

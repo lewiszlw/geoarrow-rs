@@ -12,8 +12,7 @@ classifiers = [
     "Programming Language :: Python :: Implementation :: PyPy",
 ]
 
-
 [tool.maturin]
 features = ["pyo3/extension-module"]
-module-name = "geoarrow.rust.core.rust"
+module-name = "geoarrow.rust.core._rust"
 python-source = "python"

@@ -1,6 +1,4 @@
 use std::io::Cursor;
-use std::iter::Cloned;
-use std::slice::Iter;
 
 use byteorder::{BigEndian, LittleEndian, ReadBytesExt};
 
@@ -57,7 +55,7 @@ impl<'a> WKBMultiPoint<'a> {
     }
 
     /// Check if this WKBMultiPoint has equal coordinates as some other MultiPoint object
-    pub fn equals_multi_point(&self, other: impl MultiPointTrait<T = f64>) -> bool {
+    pub fn equals_multi_point(&self, other: &impl MultiPointTrait<T = f64>) -> bool {
         multi_point_eq(self, other)
     }
 }
@@ -65,52 +63,34 @@ impl<'a> WKBMultiPoint<'a> {
 impl<'a> MultiPointTrait for WKBMultiPoint<'a> {
     type T = f64;
     type ItemType<'b> = WKBPoint<'a> where Self: 'b;
-    type Iter<'b> = Cloned<Iter<'a, Self::ItemType<'a>>> where Self: 'b;
 
     fn num_points(&self) -> usize {
         self.num_points
     }
 
-    fn point(&self, i: usize) -> Option<Self::ItemType<'_>> {
-        if i > self.num_points() {
-            return None;
-        }
-
-        Some(WKBPoint::new(
+    unsafe fn point_unchecked(&self, i: usize) -> Self::ItemType<'_> {
+        WKBPoint::new(
             self.buf,
             self.byte_order,
             self.point_offset(i.try_into().unwrap()),
-        ))
-    }
-
-    fn points(&self) -> Self::Iter<'_> {
-        todo!()
+        )
     }
 }
 
 impl<'a> MultiPointTrait for &'a WKBMultiPoint<'a> {
     type T = f64;
     type ItemType<'b> = WKBPoint<'a> where Self: 'b;
-    type Iter<'b> = Cloned<Iter<'a, Self::ItemType<'a>>> where Self: 'b;
 
     fn num_points(&self) -> usize {
         self.num_points
     }
 
-    fn point(&self, i: usize) -> Option<Self::ItemType<'_>> {
-        if i > self.num_points() {
-            return None;
-        }
-
-        Some(WKBPoint::new(
+    unsafe fn point_unchecked(&self, i: usize) -> Self::ItemType<'_> {
+        WKBPoint::new(
             self.buf,
             self.byte_order,
             self.point_offset(i.try_into().unwrap()),
-        ))
-    }
-
-    fn points(&self) -> Self::Iter<'_> {
-        todo!()
+        )
     }
 }
 
@@ -128,6 +108,6 @@ mod test {
             .unwrap();
         let wkb_geom = WKBMultiPoint::new(&buf, Endianness::LittleEndian);
 
-        assert!(wkb_geom.equals_multi_point(geom));
+        assert!(wkb_geom.equals_multi_point(&geom));
     }
 }

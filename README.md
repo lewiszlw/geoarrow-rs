@@ -2,13 +2,14 @@
 
 A Rust implementation of the [GeoArrow](https://github.com/geoarrow/geoarrow) specification and bindings to [GeoRust algorithms](https://github.com/georust/geo) for efficient spatial operations on GeoArrow memory.
 
-This repository also includes [JavaScript (WebAssembly) bindings](https://github.com/kylebarron/geoarrow-rs/blob/main/js/README.md), wrapping the GeoArrow memory layout and offering vectorized geometry operations.
+This repository also includes [Python bindings](https://github.com/geoarrow/geoarrow-rs/blob/main/python/core/README.md) and [JavaScript (WebAssembly) bindings](https://github.com/geoarrow/geoarrow-rs/blob/main/js/README.md), wrapping the GeoArrow memory layout and offering vectorized geometry operations.
 
 ## Documentation
 
-- Rust library <https://docs.rs/geoarrow2/latest/geoarrow2/>
-- JavaScript library: <https://geoarrow.github.io/geoarrow-rs/js/>
-- Rust wasm-bindgen library: <https://docs.rs/geoarrow-wasm/latest/geoarrow_wasm/>
+- [Use from Rust](https://docs.rs/geoarrow/latest/geoarrow/)
+- [Use from Python](https://geoarrow.github.io/geoarrow-rs/python)
+- [Use from JavaScript](https://geoarrow.github.io/geoarrow-rs/js)
+- [Create your own Rust-JavaScript library with `wasm-bindgen`](https://docs.rs/geoarrow-wasm/latest/geoarrow_wasm/)
 
 ## Examples
 
@@ -19,7 +20,7 @@ This repository also includes [JavaScript (WebAssembly) bindings](https://github
 Add this to your `Cargo.toml`:
 
 ```toml
-geoarrow = { git = "https://github.com/geoarrow/geoarrow-rs" }
+geoarrow = "0.1"
 ```
 
 ## References

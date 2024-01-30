@@ -1,6 +1,7 @@
 //! Defines [`GeoArrowError`], representing all errors returned by this crate.
 
 use arrow_schema::ArrowError;
+use std::borrow::Cow;
 use std::fmt::Debug;
 use thiserror::Error;
 
@@ -8,6 +9,9 @@ use thiserror::Error;
 #[derive(Error, Debug)]
 #[non_exhaustive]
 pub enum GeoArrowError {
+    #[error("Incorrect type passed to operation: {0}")]
+    IncorrectType(Cow<'static, str>),
+
     /// Returned when functionality is not yet available.
     #[error("Not yet implemented: {0}")]
     NotYetImplemented(String),
@@ -30,6 +34,10 @@ pub enum GeoArrowError {
     #[error(transparent)]
     FailedToConvergeError(#[from] geo::vincenty_distance::FailedToConvergeError),
 
+    #[cfg(feature = "gdal")]
+    #[error(transparent)]
+    GdalError(#[from] gdal::errors::GdalError),
+
     #[cfg(feature = "geozero")]
     #[error(transparent)]
     GeozeroError(#[from] geozero::error::GeozeroError),
@@ -38,6 +46,10 @@ pub enum GeoArrowError {
     #[error(transparent)]
     GeosError(#[from] geos::Error),
 
+    #[cfg(feature = "parquet")]
+    #[error(transparent)]
+    ParquetError(#[from] parquet::errors::ParquetError),
+
     #[cfg(feature = "proj")]
     #[error(transparent)]
     ProjError(#[from] proj::ProjError),
@@ -45,6 +57,17 @@ pub enum GeoArrowError {
     #[cfg(feature = "flatgeobuf")]
     #[error(transparent)]
     FlatgeobufError(#[from] flatgeobuf::Error),
+
+    #[error(transparent)]
+    IOError(#[from] std::io::Error),
+
+    #[cfg(feature = "parquet")]
+    #[error(transparent)]
+    SerdeJsonError(#[from] serde_json::Error),
+
+    #[cfg(feature = "postgis")]
+    #[error(transparent)]
+    SqlxError(#[from] sqlx::Error),
 }
 
 pub type Result<T> = std::result::Result<T, GeoArrowError>;

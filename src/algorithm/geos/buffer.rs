@@ -1,35 +1,51 @@
-use crate::array::{PointArray, PolygonArray};
+use crate::array::{PointArray, PolygonArray, PolygonBuilder};
 use crate::error::Result;
-use crate::GeometryArrayTrait;
-use geos::Geom;
+use crate::io::geos::scalar::GEOSPolygon;
+use crate::trait_::{GeometryArrayAccessor, GeometryScalarTrait};
+use arrow_array::OffsetSizeTrait;
+use geos::{BufferParams, Geom};
 
-pub trait Buffer {
+pub trait Buffer<O: OffsetSizeTrait> {
     type Output;
 
-    fn buffer(&self, width: f64, quadsegs: i32) -> Result<Self::Output>;
+    fn buffer(&self, width: f64, quadsegs: i32) -> Self::Output;
+
+    fn buffer_with_params(&self, width: f64, buffer_params: &BufferParams<'_>) -> Self::Output;
 }
 
-impl Buffer for PointArray {
-    type Output = PolygonArray<i32>;
+impl<O: OffsetSizeTrait> Buffer<O> for PointArray {
+    type Output = Result<PolygonArray<O>>;
 
-    fn buffer(&self, width: f64, quadsegs: i32) -> Result<Self::Output> {
-        // NOTE: the bumpalo allocator didn't appear to make any perf difference with geos :shrug:
-        // Presumably GEOS is allocating on its own before we can put the geometry in the Bump?
-        let bump = bumpalo::Bump::new();
+    fn buffer(&self, width: f64, quadsegs: i32) -> Self::Output {
+        let mut builder = PolygonBuilder::new();
 
-        let mut geos_geoms = bumpalo::collections::Vec::with_capacity_in(self.len(), &bump);
-
-        for maybe_g in self.iter_geos() {
+        for maybe_g in self.iter() {
             if let Some(g) = maybe_g {
-                let area = g.buffer(width, quadsegs)?;
-                geos_geoms.push(Some(area));
+                let x = g.to_geos()?.buffer(width, quadsegs)?;
+                let polygon = GEOSPolygon::new_unchecked(x);
+                builder.push_polygon(Some(&polygon))?;
             } else {
-                geos_geoms.push(None);
+                builder.push_null();
             }
         }
 
-        let polygon_array: PolygonArray<i32> = geos_geoms.try_into()?;
-        Ok(polygon_array)
+        Ok(builder.finish())
+    }
+
+    fn buffer_with_params(&self, width: f64, buffer_params: &BufferParams<'_>) -> Self::Output {
+        let mut builder = PolygonBuilder::new();
+
+        for maybe_g in self.iter() {
+            if let Some(g) = maybe_g {
+                let x = g.to_geos()?.buffer_with_params(width, buffer_params)?;
+                let polygon = GEOSPolygon::new_unchecked(x);
+                builder.push_polygon(Some(&polygon))?;
+            } else {
+                builder.push_null();
+            }
+        }
+
+        Ok(builder.finish())
     }
 }
 
@@ -82,7 +98,7 @@ mod test {
     #[test]
     fn point_buffer() {
         let arr = point_array();
-        let buffered = arr.buffer(1., 8).unwrap();
+        let buffered: PolygonArray<i32> = arr.buffer(1., 8).unwrap();
         dbg!(buffered);
     }
 }

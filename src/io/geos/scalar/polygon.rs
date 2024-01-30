@@ -6,31 +6,26 @@ use arrow_array::OffsetSizeTrait;
 use geos::{Geom, GeometryTypes};
 
 impl<'b, O: OffsetSizeTrait> TryFrom<Polygon<'_, O>> for geos::Geometry<'b> {
-    type Error = GeoArrowError;
+    type Error = geos::Error;
 
-    fn try_from(value: Polygon<'_, O>) -> Result<geos::Geometry<'b>> {
+    fn try_from(value: Polygon<'_, O>) -> std::result::Result<geos::Geometry<'b>, geos::Error> {
         geos::Geometry::try_from(&value)
     }
 }
 
 impl<'a, 'b, O: OffsetSizeTrait> TryFrom<&'a Polygon<'_, O>> for geos::Geometry<'b> {
-    type Error = GeoArrowError;
+    type Error = geos::Error;
 
-    fn try_from(value: &'a Polygon<'_, O>) -> Result<geos::Geometry<'b>> {
+    fn try_from(value: &'a Polygon<'_, O>) -> std::result::Result<geos::Geometry<'b>, geos::Error> {
         if let Some(exterior) = value.exterior() {
             let exterior = exterior.to_geos_linear_ring()?;
-            let num_interiors = value.num_interiors();
-
-            let mut interiors = Vec::with_capacity(num_interiors);
-
-            for interior_idx in 0..num_interiors {
-                let interior = value.interior(interior_idx).unwrap();
-                interiors.push(interior.to_geos_linear_ring()?);
-            }
-
-            Ok(geos::Geometry::create_polygon(exterior, interiors)?)
+            let interiors = value
+                .interiors()
+                .map(|interior| interior.to_geos_linear_ring())
+                .collect::<std::result::Result<Vec<_>, geos::Error>>()?;
+            geos::Geometry::create_polygon(exterior, interiors)
         } else {
-            Ok(geos::Geometry::create_empty_polygon()?)
+            geos::Geometry::create_empty_polygon()
         }
     }
 }
@@ -54,6 +49,7 @@ impl<'a> GEOSPolygon<'a> {
         }
     }
 
+    // TODO: delete these
     #[allow(dead_code)]
     pub fn num_interiors(&self) -> usize {
         self.0.get_num_interior_rings().unwrap()
@@ -82,6 +78,31 @@ impl<'a> GEOSPolygon<'a> {
     }
 }
 
+impl<'a> PolygonTrait for GEOSPolygon<'a> {
+    type T = f64;
+    type ItemType<'c> = GEOSConstLinearRing<'a, 'c> where Self: 'c;
+
+    fn num_interiors(&self) -> usize {
+        self.0.get_num_interior_rings().unwrap()
+    }
+
+    fn exterior(&self) -> Option<Self::ItemType<'_>> {
+        if self.0.is_empty().unwrap() {
+            return None;
+        }
+
+        Some(GEOSConstLinearRing::new_unchecked(
+            self.0.get_exterior_ring().unwrap(),
+        ))
+    }
+
+    unsafe fn interior_unchecked(&self, i: usize) -> Self::ItemType<'_> {
+        GEOSConstLinearRing::new_unchecked(
+            self.0.get_interior_ring_n(i.try_into().unwrap()).unwrap(),
+        )
+    }
+}
+
 pub struct GEOSConstPolygon<'a, 'b>(pub(crate) geos::ConstGeometry<'a, 'b>);
 
 impl<'a, 'b> GEOSConstPolygon<'a, 'b> {
@@ -99,12 +120,17 @@ impl<'a, 'b> GEOSConstPolygon<'a, 'b> {
             ))
         }
     }
+}
 
-    pub fn num_interiors(&self) -> usize {
+impl<'a, 'b> PolygonTrait for GEOSConstPolygon<'a, 'b> {
+    type T = f64;
+    type ItemType<'c> = GEOSConstLinearRing<'a, 'c> where Self: 'c;
+
+    fn num_interiors(&self) -> usize {
         self.0.get_num_interior_rings().unwrap()
     }
 
-    pub fn exterior(&self) -> Option<GEOSConstLinearRing<'a, '_>> {
+    fn exterior(&self) -> Option<Self::ItemType<'_>> {
         if self.0.is_empty().unwrap() {
             return None;
         }
@@ -114,13 +140,9 @@ impl<'a, 'b> GEOSConstPolygon<'a, 'b> {
         ))
     }
 
-    pub fn interior(&self, i: usize) -> Option<GEOSConstLinearRing<'a, '_>> {
-        if i > self.num_interiors() {
-            return None;
-        }
-
-        Some(GEOSConstLinearRing::new_unchecked(
+    unsafe fn interior_unchecked(&self, i: usize) -> Self::ItemType<'_> {
+        GEOSConstLinearRing::new_unchecked(
             self.0.get_interior_ring_n(i.try_into().unwrap()).unwrap(),
-        ))
+        )
     }
 }

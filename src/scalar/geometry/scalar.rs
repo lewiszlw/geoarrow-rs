@@ -1,4 +1,6 @@
+use crate::algorithm::native::eq::geometry_eq;
 use crate::geo_traits::{GeometryTrait, GeometryType};
+use crate::io::geo::geometry_to_geo;
 use crate::scalar::*;
 use crate::trait_::GeometryScalarTrait;
 use arrow_array::OffsetSizeTrait;
@@ -7,7 +9,7 @@ use rstar::{RTreeObject, AABB};
 /// A Geometry is an enum over the various underlying _zero copy_ GeoArrow scalar types.
 ///
 /// Notably this does _not_ include [`WKB`] as a variant, because that is not zero-copy to parse.
-#[derive(Debug, PartialEq)]
+#[derive(Debug)]
 pub enum Geometry<'a, O: OffsetSizeTrait> {
     Point(crate::scalar::Point<'a>),
     LineString(crate::scalar::LineString<'a, O>),
@@ -15,6 +17,7 @@ pub enum Geometry<'a, O: OffsetSizeTrait> {
     MultiPoint(crate::scalar::MultiPoint<'a, O>),
     MultiLineString(crate::scalar::MultiLineString<'a, O>),
     MultiPolygon(crate::scalar::MultiPolygon<'a, O>),
+    GeometryCollection(crate::scalar::GeometryCollection<'a, O>),
     Rect(crate::scalar::Rect<'a>),
 }
 
@@ -29,8 +32,14 @@ impl<'a, O: OffsetSizeTrait> GeometryScalarTrait for Geometry<'a, O> {
             Geometry::MultiPoint(g) => geo::Geometry::MultiPoint(g.into()),
             Geometry::MultiLineString(g) => geo::Geometry::MultiLineString(g.into()),
             Geometry::MultiPolygon(g) => geo::Geometry::MultiPolygon(g.into()),
+            Geometry::GeometryCollection(g) => geo::Geometry::GeometryCollection(g.into()),
             Geometry::Rect(g) => geo::Geometry::Rect(g.into()),
         }
+    }
+
+    #[cfg(feature = "geos")]
+    fn to_geos(&self) -> std::result::Result<geos::Geometry, geos::Error> {
+        self.try_into()
     }
 }
 
@@ -67,9 +76,8 @@ impl<'a, O: OffsetSizeTrait> GeometryTrait for Geometry<'a, O> {
             Geometry::MultiPoint(p) => GeometryType::MultiPoint(p),
             Geometry::MultiLineString(p) => GeometryType::MultiLineString(p),
             Geometry::MultiPolygon(p) => GeometryType::MultiPolygon(p),
-            // Geometry::GeometryCollection(p) => GeometryType::GeometryCollection(p),
-            // Geometry::Rect(p) => GeometryType::Rect(p),
-            _ => todo!(),
+            Geometry::GeometryCollection(p) => GeometryType::GeometryCollection(p),
+            Geometry::Rect(p) => GeometryType::Rect(p),
         }
     }
 }
@@ -107,7 +115,7 @@ impl<'a, O: OffsetSizeTrait> GeometryTrait for &'a Geometry<'a, O> {
             Geometry::MultiPoint(p) => GeometryType::MultiPoint(p),
             Geometry::MultiLineString(p) => GeometryType::MultiLineString(p),
             Geometry::MultiPolygon(p) => GeometryType::MultiPolygon(p),
-            // Geometry::GeometryCollection(p) => GeometryType::GeometryCollection(p),
+            Geometry::GeometryCollection(p) => GeometryType::GeometryCollection(p),
             Geometry::Rect(p) => GeometryType::Rect(p),
         }
     }
@@ -124,6 +132,7 @@ impl<O: OffsetSizeTrait> RTreeObject for Geometry<'_, O> {
             Geometry::MultiPoint(geom) => geom.envelope(),
             Geometry::MultiLineString(geom) => geom.envelope(),
             Geometry::MultiPolygon(geom) => geom.envelope(),
+            Geometry::GeometryCollection(geom) => geom.envelope(),
             Geometry::Rect(geom) => geom.envelope(),
         }
     }
@@ -131,14 +140,18 @@ impl<O: OffsetSizeTrait> RTreeObject for Geometry<'_, O> {
 
 impl<O: OffsetSizeTrait> From<Geometry<'_, O>> for geo::Geometry {
     fn from(value: Geometry<'_, O>) -> Self {
-        match value {
-            Geometry::Point(geom) => geom.into(),
-            Geometry::LineString(geom) => geom.into(),
-            Geometry::Polygon(geom) => geom.into(),
-            Geometry::MultiPoint(geom) => geom.into(),
-            Geometry::MultiLineString(geom) => geom.into(),
-            Geometry::MultiPolygon(geom) => geom.into(),
-            Geometry::Rect(geom) => geom.into(),
-        }
+        geometry_to_geo(&value)
+    }
+}
+
+impl<O: OffsetSizeTrait> From<&Geometry<'_, O>> for geo::Geometry {
+    fn from(value: &Geometry<'_, O>) -> Self {
+        geometry_to_geo(value)
+    }
+}
+
+impl<O: OffsetSizeTrait, G: GeometryTrait<T = f64>> PartialEq<G> for Geometry<'_, O> {
+    fn eq(&self, other: &G) -> bool {
+        geometry_eq(self, other)
     }
 }

@@ -1,7 +1,11 @@
 use crate::algorithm::geo::utils::zeroes;
+use crate::algorithm::native::Unary;
 use crate::array::*;
+use crate::chunked_array::{ChunkedArray, ChunkedGeometryArray};
+use crate::datatypes::GeoDataType;
+use crate::error::{GeoArrowError, Result};
+use crate::trait_::GeometryScalarTrait;
 use crate::GeometryArrayTrait;
-use arrow_array::builder::Float64Builder;
 use arrow_array::{Float64Array, OffsetSizeTrait};
 use geo::GeodesicLength as _GeodesicLength;
 
@@ -12,6 +16,8 @@ use geo::GeodesicLength as _GeodesicLength;
 ///
 /// [Karney (2013)]:  https://arxiv.org/pdf/1109.4448.pdf
 pub trait GeodesicLength {
+    type Output;
+
     /// Determine the length of a geometry on an ellipsoidal model of the earth.
     ///
     /// This uses the geodesic measurement methods given by [Karney (2013)]. As opposed to older methods
@@ -48,12 +54,14 @@ pub trait GeodesicLength {
     /// ```
     ///
     /// [Karney (2013)]:  https://arxiv.org/pdf/1109.4448.pdf
-    fn geodesic_length(&self) -> Float64Array;
+    fn geodesic_length(&self) -> Self::Output;
 }
 
 // Note: this can't (easily) be parameterized in the macro because PointArray is not generic over O
 impl GeodesicLength for PointArray {
-    fn geodesic_length(&self) -> Float64Array {
+    type Output = Float64Array;
+
+    fn geodesic_length(&self) -> Self::Output {
         zeroes(self.len(), self.nulls())
     }
 }
@@ -62,7 +70,9 @@ impl GeodesicLength for PointArray {
 macro_rules! zero_impl {
     ($type:ty) => {
         impl<O: OffsetSizeTrait> GeodesicLength for $type {
-            fn geodesic_length(&self) -> Float64Array {
+            type Output = Float64Array;
+
+            fn geodesic_length(&self) -> Self::Output {
                 zeroes(self.len(), self.nulls())
             }
         }
@@ -75,12 +85,10 @@ zero_impl!(MultiPointArray<O>);
 macro_rules! iter_geo_impl {
     ($type:ty) => {
         impl<O: OffsetSizeTrait> GeodesicLength for $type {
-            fn geodesic_length(&self) -> Float64Array {
-                let mut output_array = Float64Builder::with_capacity(self.len());
-                self.iter_geo().for_each(|maybe_g| {
-                    output_array.append_option(maybe_g.map(|g| g.geodesic_length()))
-                });
-                output_array.finish()
+            type Output = Float64Array;
+
+            fn geodesic_length(&self) -> Self::Output {
+                self.unary_primitive(|geom| geom.to_geo().geodesic_length())
             }
         }
     };
@@ -88,6 +96,61 @@ macro_rules! iter_geo_impl {
 
 iter_geo_impl!(LineStringArray<O>);
 iter_geo_impl!(MultiLineStringArray<O>);
+
+impl GeodesicLength for &dyn GeometryArrayTrait {
+    type Output = Result<Float64Array>;
+
+    fn geodesic_length(&self) -> Self::Output {
+        let result = match self.data_type() {
+            GeoDataType::Point(_) => self.as_point().geodesic_length(),
+            GeoDataType::LineString(_) => self.as_line_string().geodesic_length(),
+            GeoDataType::LargeLineString(_) => self.as_large_line_string().geodesic_length(),
+            // GeoDataType::Polygon(_) => self.as_polygon().geodesic_length(),
+            // GeoDataType::LargePolygon(_) => self.as_large_polygon().geodesic_length(),
+            GeoDataType::MultiPoint(_) => self.as_multi_point().geodesic_length(),
+            GeoDataType::LargeMultiPoint(_) => self.as_large_multi_point().geodesic_length(),
+            GeoDataType::MultiLineString(_) => self.as_multi_line_string().geodesic_length(),
+            GeoDataType::LargeMultiLineString(_) => {
+                self.as_large_multi_line_string().geodesic_length()
+            }
+            // GeoDataType::MultiPolygon(_) => self.as_multi_polygon().geodesic_length(),
+            // GeoDataType::LargeMultiPolygon(_) => self.as_large_multi_polygon().geodesic_length(),
+            // GeoDataType::Mixed(_) => self.as_mixed().geodesic_length(),
+            // GeoDataType::LargeMixed(_) => self.as_large_mixed().geodesic_length(),
+            // GeoDataType::GeometryCollection(_) => self.as_geometry_collection().geodesic_length(),
+            // GeoDataType::LargeGeometryCollection(_) => {
+            //     self.as_large_geometry_collection().geodesic_length()
+            // }
+            _ => return Err(GeoArrowError::IncorrectType("".into())),
+        };
+        Ok(result)
+    }
+}
+
+impl GeodesicLength for ChunkedGeometryArray<PointArray> {
+    type Output = Result<ChunkedArray<Float64Array>>;
+
+    fn geodesic_length(&self) -> Self::Output {
+        self.map(|chunk| chunk.geodesic_length()).try_into()
+    }
+}
+
+/// Implementation that iterates over chunks
+macro_rules! chunked_impl {
+    ($type:ty) => {
+        impl<O: OffsetSizeTrait> GeodesicLength for $type {
+            type Output = Result<ChunkedArray<Float64Array>>;
+
+            fn geodesic_length(&self) -> Self::Output {
+                self.map(|chunk| chunk.geodesic_length()).try_into()
+            }
+        }
+    };
+}
+
+chunked_impl!(ChunkedGeometryArray<LineStringArray<O>>);
+chunked_impl!(ChunkedGeometryArray<MultiPointArray<O>>);
+chunked_impl!(ChunkedGeometryArray<MultiLineStringArray<O>>);
 
 #[cfg(test)]
 mod tests {
