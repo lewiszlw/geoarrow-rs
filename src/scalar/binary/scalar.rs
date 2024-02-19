@@ -2,6 +2,8 @@ use crate::io::geo::geometry_to_geo;
 use crate::trait_::GeometryScalarTrait;
 use arrow_array::{GenericBinaryArray, OffsetSizeTrait};
 use geo::BoundingRect;
+#[cfg(feature = "geozero")]
+use geozero::ToGeo;
 use rstar::{RTreeObject, AABB};
 use std::borrow::Cow;
 
