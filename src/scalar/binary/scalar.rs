@@ -57,6 +57,7 @@ impl<'a, O: OffsetSizeTrait> AsRef<[u8]> for WKB<'a, O> {
     }
 }
 
+#[cfg(not(feature = "geozero"))]
 impl<O: OffsetSizeTrait> From<&WKB<'_, O>> for geo::Geometry {
     fn from(value: &WKB<'_, O>) -> Self {
         geometry_to_geo(&value.to_wkb_object())
@@ -74,20 +75,6 @@ impl<O: OffsetSizeTrait> From<&WKB<'_, O>> for geo::Geometry {
     fn from(value: &WKB<'_, O>) -> Self {
         let buf = value.arr.value(value.geom_index);
         geozero::wkb::Ewkb(buf.to_vec()).to_geo().unwrap()
-    }
-}
-
-#[cfg(not(feature = "geozero"))]
-impl<O: OffsetSizeTrait> From<WKB<'_, O>> for geo::Geometry {
-    fn from(_value: WKB<'_, O>) -> Self {
-        (&_value).into()
-    }
-}
-
-#[cfg(not(feature = "geozero"))]
-impl<O: OffsetSizeTrait> From<&WKB<'_, O>> for geo::Geometry {
-    fn from(_value: &WKB<'_, O>) -> Self {
-        panic!("Activate the 'geozero' feature to convert WKB items to geo::Geometry.")
     }
 }
 
